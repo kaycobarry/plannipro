@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PlanniPro — Gestion RH & Planning</title>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link href="./plannipro-vault.css" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -37,13 +38,12 @@ body{font-family:var(--ff);background:var(--bg);color:var(--tx1);font-size:13px;
 /* Sidebar backdrop (mobile/tablet) */
 .sb-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:190;display:none;backdrop-filter:blur(2px)}
 .sb-backdrop.show{display:block}
-/* Toggle tab — always visible even when sidebar hidden */
-.sb-tab{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:210;width:20px;height:52px;background:var(--navy);border-radius:0 8px 8px 0;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .28s cubic-bezier(.4,0,.2,1);box-shadow:2px 0 8px rgba(0,0,0,.25)}
-.sb-tab:hover{width:24px;background:var(--ind)}
-.sb-tab svg{width:12px;height:12px;color:#fff;transition:transform .28s}
-.sb-tab.open{left:var(--sb)}
-.sb-tab.open.col{left:var(--sbc)}
-.sb-tab.open svg{transform:rotate(180deg)}
+/* Menu button — lives in the top bar on desktop and becomes a drawer trigger on mobile */
+.sb-tab{position:relative;z-index:60;min-width:70px;width:auto;height:34px;padding:0 10px;background:var(--white);color:var(--tx2);border:1px solid var(--bd1);border-radius:10px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:var(--tr);box-shadow:0 1px 2px rgba(15,22,41,.04);font:600 11px var(--ff);flex-shrink:0}
+.sb-tab:hover{background:var(--bg);color:var(--tx1);border-color:var(--bd2)}
+.sb-tab svg{width:16px;height:16px;color:currentColor;transition:none;flex-shrink:0}
+.sb-tab.open svg{transform:none}
+.sb-tab-label{line-height:1}
 .sb-logo{padding:18px 14px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
 .sb-logo-ico{width:34px;height:34px;background:var(--ind);border-radius:9px;display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 8px rgba(79,99,231,.4)}
 .sb-logo-ico svg{width:18px;height:18px}
@@ -118,7 +118,7 @@ body{font-family:var(--ff);background:var(--bg);color:var(--tx1);font-size:13px;
 .ar-error{background:#FEF2F2;color:#991B1B;border-bottom:1px solid #FECACA}
 /* PLANNING GRID */
 .grid-wrap{flex:1;overflow:auto;min-width:0}
-.plan-grid{display:grid;grid-template-columns:var(--lw) repeat(7,var(--cw)) var(--rw);min-width:calc(var(--lw) + var(--cw)*7 + var(--rw))}
+.plan-grid{display:grid;width:100%;min-width:1000px;grid-template-columns:clamp(168px,11vw,210px) repeat(7,minmax(104px,1fr)) clamp(76px,5vw,96px);background:var(--white)}
 .gh-corner{position:sticky;top:0;left:0;z-index:30;background:var(--white);border-right:2px solid var(--bd2);border-bottom:2px solid var(--bd2);height:var(--head-h);display:flex;align-items:center;padding:0 13px}
 .gh-corner-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--tx3)}
 .gh-day{position:sticky;top:0;z-index:20;background:var(--white);border-bottom:2px solid var(--bd2);border-right:1px solid var(--bd1);height:var(--head-h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;transition:background .15s;position:relative}
@@ -458,7 +458,17 @@ body{font-family:var(--ff);background:var(--bg);color:var(--tx1);font-size:13px;
 .vt-btn:hover:not(.act){color:var(--tx1)}
 .drag-ghost-img{position:fixed;top:-999px;left:-999px;pointer-events:none;background:var(--ind);color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap}
 .gr-cell.drag-target{background:rgba(79,99,231,.08)!important;outline:2px dashed var(--ind);outline-offset:-2px}
-.sh-blk.dragging-wk{opacity:.4;cursor:grabbing}
+.sh-blk.dragging-wk,.sh-stack.dragging-wk{opacity:.4;cursor:grabbing}
+.drag-tools{display:flex;align-items:center;gap:4px;margin-left:8px;padding-left:8px;border-left:1px solid var(--bd1)}
+.drag-tools-label{font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.35px}
+.drag-mode-btn{height:30px;border:1px solid var(--bd1);border-radius:7px;background:var(--white);color:var(--tx2);padding:0 9px;font-size:11px;font-weight:700;cursor:pointer}
+.drag-mode-btn.act{background:var(--ind-lt);border-color:var(--ind-md);color:var(--ind)}
+.planning-context-menu{position:fixed;z-index:900;display:none;min-width:178px;padding:6px;border:1px solid var(--bd1);border-radius:10px;background:var(--white);box-shadow:0 14px 35px rgba(15,22,41,.2)}
+.planning-context-menu.open{display:block}
+.planning-context-menu button{display:flex;width:100%;align-items:center;gap:8px;border:0;border-radius:7px;background:transparent;padding:9px 10px;color:var(--tx1);font:inherit;font-size:12px;font-weight:650;text-align:left;cursor:pointer}
+.planning-context-menu button:hover{background:var(--off)}
+.planning-context-menu button:disabled{opacity:.4;cursor:not-allowed}
+.planning-context-menu .danger{color:var(--red)}
 /* MONTH VIEW */
 .month-wrap{flex:1;overflow:auto;padding:16px 20px}
 .month-nav{display:flex;align-items:center;gap:8px;margin-bottom:14px}
@@ -481,7 +491,7 @@ body{font-family:var(--ff);background:var(--bg);color:var(--tx1);font-size:13px;
 .cov-bar{width:80%;border-radius:3px 3px 0 0;min-height:2px;transition:height .3s}
 .cov-lbl{font-size:8.5px;color:var(--tx3);font-weight:600}
 .cov-cnt{font-size:9px;font-weight:700}
-/* SHIFT MODAL SKELLO STYLE */
+/* MODALE D’HORAIRES PLANNIPRO */
 .skt-bar{display:flex;border-bottom:2px solid var(--bd1);margin-bottom:16px;gap:0}
 .skt-tab{padding:9px 20px;border:none;background:none;font-family:var(--ff);font-size:13.5px;font-weight:600;cursor:pointer;color:var(--tx3);border-bottom:2px solid transparent;margin-bottom:-2px;transition:var(--tr)}
 .skt-tab:hover{color:var(--tx1)}
@@ -653,12 +663,25 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .toast{border:1px solid rgba(255,255,255,.16)}
 .day-sub-nav,.strip{background:rgba(255,255,255,.92);backdrop-filter:blur(10px)}
 .grid-wrap,.day-view-wrap,#monthViewWrap,.ev-wrap,.ts-wrap,.hr-wrap,.reg-wrap,.erp-wrap,.an-wrap,.set-wrap{overscroll-behavior:contain}
-.sb-tab{box-shadow:0 5px 18px rgba(15,22,41,.22)}
+.sb-tab{box-shadow:0 1px 3px rgba(15,22,41,.08)}
+
+@media (min-width:769px){
+  .day-sub-nav{min-height:40px;padding-top:4px;padding-bottom:4px}
+  .alert-row{padding:5px 14px;font-size:11.5px}
+  .coverage-toggle{padding:6px 14px}
+}
 
 @media (min-width:769px) and (max-width:1100px){
   .sb{width:164px}
   .topbar{padding-left:12px;padding-right:12px}
-  .tb-icon-btn{padding-left:6px;padding-right:6px}
+  .tb-icon-btn{min-width:34px;width:34px;height:34px;padding:0;justify-content:center}
+  .tb-icon-btn span{display:none}
+  #mainBtn{min-width:34px;width:34px;padding:0;justify-content:center}
+  #mainBtnLbl{display:none}
+  #wkBar .wk-lbl{min-width:108px}
+  .sb-tab{min-width:34px;width:34px;padding:0}
+  .sb-tab-label{display:none}
+  .plan-grid{min-width:920px;grid-template-columns:154px repeat(7,minmax(98px,1fr)) 72px}
 }
 
 @media (max-width:768px){
@@ -668,9 +691,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .sb.mobile-open{transform:translateX(0)!important;visibility:visible}
   .sb.hidden{width:min(86vw,310px)!important;transform:translateX(-105%)!important;visibility:hidden}
   .sb-backdrop.show{display:block}
-  .sb-tab,.sb-tab.open,.sb-tab.open.col{left:10px!important;top:10px;transform:none;width:40px;height:40px;border-radius:12px;background:var(--navy2)}
+  .sb-tab,.sb-tab.open,.sb-tab.open.col{position:fixed!important;left:10px!important;top:10px;transform:none;min-width:40px;width:40px;height:40px;padding:0;border-radius:12px;background:var(--navy2);color:#fff;border-color:rgba(255,255,255,.1);box-shadow:0 5px 18px rgba(15,22,41,.22);z-index:210}
   .sb-tab:hover{width:40px;background:var(--ind)}
   .sb-tab svg{width:16px;height:16px}
+  .sb-tab-label{display:none}
   .topbar{height:60px;padding:0 8px 0 58px;gap:5px;overflow:hidden}
   #wkBar{min-width:0;overflow:hidden;gap:4px!important}
   #wkBar .wk-nav{padding:2px 3px}
@@ -713,6 +737,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .set-nav::-webkit-scrollbar{display:none}
   .sn-item{white-space:nowrap;flex-shrink:0}
   .set-panel{min-height:0}
+  .plan-grid{width:max-content;min-width:948px;grid-template-columns:var(--lw) repeat(7,var(--cw)) var(--rw)}
 }
 
 @media (max-width:420px){
@@ -748,10 +773,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <body>
 <!-- Sidebar backdrop -->
 <div class="sb-backdrop" id="sbBackdrop" onclick="hideSb()"></div>
-<!-- Sidebar toggle tab -->
-<button class="sb-tab open" id="sbTab" onclick="toggleSbFull()" title="Afficher / Masquer le menu" aria-label="Menu">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-</button>
 <aside class="sb" id="mainSb">
   <div class="sb-logo">
     <div class="sb-logo-ico"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
@@ -765,6 +786,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <button class="sb-btn" id="sb-pointage" onclick="goView('pointage')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span class="sb-lbl-txt">Pointage</span><span class="sb-tip">Pointage</span></button>
     <div class="sb-lbl" style="margin-top:6px">RH</div>
     <button class="sb-btn" id="sb-hr" onclick="goView('hr')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span class="sb-lbl-txt">Conges &amp; Absences</span><span id="hrBadge" class="sb-badge" style="display:none">0</span><span class="sb-tip">Conges &amp; Absences</span></button>
+    <button class="sb-btn" id="sb-vault" onclick="goView('vault')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="10" width="18" height="11" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/><circle cx="12" cy="15" r="1"/></svg><span class="sb-lbl-txt">Coffre-fort RH</span><span class="sb-tip">Coffre-fort RH</span></button>
     <button class="sb-btn" id="sb-registre" onclick="goView('registre')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span class="sb-lbl-txt">Registre Personnel</span><span class="sb-tip">Registre du Personnel</span></button>
     <div class="sb-lbl" style="margin-top:6px">Gestion</div>
     <button class="sb-btn" id="sb-erp" onclick="goView('erp')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span class="sb-lbl-txt">ERP</span><span class="sb-tip">ERP Interne</span></button>
@@ -783,6 +805,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 
 <div class="app">
   <header class="topbar">
+    <button class="sb-tab open" id="sbTab" onclick="toggleSbFull()" title="Réduire le menu" aria-label="Réduire le menu" aria-expanded="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <span class="sb-tab-label">Menu</span>
+    </button>
     <!-- Gauche : navigation semaine + outils -->
     <div id="wkBar" style="display:flex;align-items:center;gap:6px;flex-shrink:0">
       <div class="wk-nav">
@@ -826,17 +852,17 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <!-- Separateur -->
       <div style="width:1px;height:22px;background:var(--bd1);margin:0 2px"></div>
       <!-- Export CSV -->
-      <button class="tb-icon-btn" onclick="exportCSV()" title="Exporter en CSV">
+      <button class="tb-icon-btn" onclick="exportCSV()" data-pp-permission="planning.export" title="Exporter en CSV">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span>CSV</span>
       </button>
       <!-- Télécharger PDF -->
-      <button class="tb-icon-btn" onclick="exportPDF()" title="Télécharger le planning hebdomadaire en PDF" style="color:#DC2626">
+      <button class="tb-icon-btn" onclick="exportPDF()" data-pp-permission="planning.export" title="Télécharger le planning hebdomadaire en PDF" style="color:#DC2626">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span>PDF</span>
       </button>
       <!-- Imprimer -->
-      <button class="tb-icon-btn" onclick="printWeeklyPlanning()" title="Imprimer le planning hebdomadaire">
+      <button class="tb-icon-btn" onclick="printWeeklyPlanning()" data-pp-permission="planning.print" title="Imprimer le planning hebdomadaire">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
         <span>Imprimer</span>
       </button>
@@ -857,6 +883,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
         <button class="vt-btn" id="vtMonth" onclick="setPlanView('month')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>Mois</button>
       </div>
       <button class="btn btn-outline btn-sm" style="margin-left:8px" onclick="openDupModal()" title="Dupliquer une semaine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Dupliquer semaine</button>
+      <div class="drag-tools" title="Choisissez l’action réalisée lorsque vous glissez un shift vers une autre case">
+        <span class="drag-tools-label">Glisser</span>
+        <button type="button" class="drag-mode-btn act" id="dragModeMove" onclick="setPlanningDragMode('move')">Déplacer</button>
+        <button type="button" class="drag-mode-btn" id="dragModeCopy" onclick="setPlanningDragMode('copy')">Copier</button>
+      </div>
       <div id="dayNavBar" style="display:none;align-items:center;gap:8px">
         <div class="day-nav-arrows">
           <button class="day-nav-btn" onclick="changeDay(-1)">&#8249;</button>
@@ -920,19 +951,21 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <div class="pill p-gray" id="empArchPill" style="display:none">Archives&nbsp;: <span class="pv" id="empArchCnt">0</span></div>
       <div style="margin-left:auto;display:flex;gap:6px">
         <button class="btn btn-outline btn-sm" onclick="toggleArchived()" id="archToggle">Voir archives</button>
+        <button class="btn btn-outline btn-sm" onclick="openManagerModal()" data-pp-permission="employees.create">Ajouter le gérant</button>
+        <button class="btn btn-primary btn-sm" onclick="openEmpModal()" data-pp-permission="employees.create">Ajouter un collaborateur</button>
       </div>
     </div>
     <div class="ev-wrap"><div class="ev-grid" id="evGrid"></div></div>
   </div>
   <div class="view" id="view-timesheet">
-    <div class="strip"><div class="pill p-blue">Semaine&nbsp;: <span class="pv" id="tsWkLbl">&#8212;</span></div></div>
+    <div class="strip"><div class="pill p-blue">Semaine&nbsp;: <span class="pv" id="tsWkLbl">&#8212;</span></div><div style="margin-left:auto"><button class="btn btn-primary btn-sm" onclick="openEmpModal()" data-pp-permission="employees.create">Ajouter un collaborateur</button></div></div>
     <div class="ts-wrap">
       <table class="ts-table"><thead><tr><th>Employe</th><th>H. planif.</th><th>H. realis.</th><th>Ecart</th><th>H. sup.</th><th>Cout brut</th><th>Statut</th><th>Action</th></tr></thead>
       <tbody id="tsBody"></tbody><tfoot id="tsFoot"></tfoot></table>
     </div>
   </div>
   <div class="view" id="view-pointage">
-    <div style="background:var(--white);border-bottom:1px solid var(--bd1);padding:10px 18px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+    <div style="background:var(--white);border-bottom:1px solid var(--bd1);padding:10px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex-shrink:0">
       <div class="wk-nav" style="display:flex;align-items:center;gap:4px;border:1px solid var(--bd1);border-radius:var(--r);padding:3px 5px">
         <button class="wk-btn" onclick="changePtDay(-7)">&#171;</button>
         <button class="wk-btn" onclick="changePtDay(-1)">&#8249;</button>
@@ -942,11 +975,15 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       </div>
       <div id="ptDayTabs" style="display:flex;gap:3px;overflow-x:auto"></div>
       <div class="spacer"></div>
-      <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto">
         <div id="ptClock" style="font-family:var(--ffd);font-size:15px;font-weight:800;color:var(--tx1)"></div>
-        <select class="fs" id="punchSel" style="width:160px"></select>
+        <button class="btn btn-outline btn-sm" onclick="openTimeClockApp()" data-pp-permission="pointage.edit_schedule" title="Ouvrir la pointeuse tablette dans un nouvel onglet">Pointeuse tablette</button>
+        <select class="fs" id="punchSel" style="width:160px" onchange="updatePointageProfileActions()" aria-label="Collaborateur à pointer"></select>
         <button class="btn btn-success btn-sm" onclick="doPunch('in')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>Entree</button>
         <button class="btn btn-danger btn-sm" onclick="doPunch('out')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Sortie</button>
+        <button class="btn btn-outline btn-sm" id="ptOpenProfileBtn" onclick="openSelectedPointageProfile()" disabled title="Ouvrir la fiche RH du profil sélectionné">Fiche RH</button>
+        <button class="btn btn-outline btn-sm" id="ptDeleteProfileBtn" onclick="deleteSelectedPointageProfile()" disabled title="Supprimer un profil fictif ou erroné" style="color:var(--red);border-color:#fecaca">Supprimer le profil</button>
+        <button class="btn btn-outline btn-sm" id="ptCleanOrphansBtn" onclick="cleanOrphanPointages()" style="display:none" title="Supprimer uniquement les pointages liés à un profil qui n’existe plus">Nettoyer les pointages orphelins</button>
       </div>
     </div>
     <div style="background:var(--white);border-bottom:1px solid var(--bd1);padding:0 18px;display:flex;gap:0;flex-shrink:0">
@@ -974,9 +1011,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   <div class="view" id="view-hr">
     <div class="strip">
       <div class="pill p-orange" id="pendingPill">En attente&nbsp;: <span class="pv" id="pendingCnt">0</span></div>
-      <div style="margin-left:auto"><button class="btn btn-primary" onclick="openAbsModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Nouvelle demande</button></div>
+      <div style="margin-left:auto;display:flex;gap:6px"><button class="btn btn-outline" onclick="openEmpModal()" data-pp-permission="employees.create">Ajouter un collaborateur</button><button class="btn btn-primary" onclick="openAbsModal()" data-pp-permission="leaves.request"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Nouvelle demande</button></div>
     </div>
     <div class="hr-wrap">
+      <div id="hrVaultAlerts"></div>
       <div class="hr-grid">
         <div class="card"><div class="card-title"><div class="card-ico" style="background:var(--org-lt)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--org)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>Demandes en attente</div><div id="absListPending"></div></div>
         <div class="card"><div class="card-title"><div class="card-ico" style="background:var(--grn-lt)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>Conges approuves</div><div id="absListApproved"></div></div>
@@ -991,12 +1029,20 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       </div>
     </div>
   </div>
+  <div class="view" id="view-vault">
+    <div id="vaultRoot" class="vault-page" aria-live="polite">
+      <div class="vault-empty"><strong>Chargement du coffre-fort RH…</strong></div>
+    </div>
+  </div>
   <div class="view" id="view-registre">
     <div class="strip">
       <div class="pill p-blue">Registre unique du personnel &#8212; Art. L1221-13 Code du Travail</div>
+      <div class="pill p-green">Synchronisation RH automatique active</div>
       <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn btn-outline" onclick="syncAllEmployeesToRegister()" title="Créer ou actualiser les inscriptions depuis les dossiers RH">Synchroniser les dossiers RH</button>
         <button class="btn btn-outline" onclick="exportRegCSV()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>CSV</button>
-        <button class="btn btn-primary" onclick="openRegModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Ajouter une entree</button>
+        <button class="btn btn-outline" onclick="openRegModal()">Entrée manuelle</button>
+        <button class="btn btn-primary" onclick="openEmpModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Nouveau collaborateur</button>
       </div>
     </div>
     <div class="reg-wrap">
@@ -1117,6 +1163,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <div class="skt-bar">
         <button class="skt-tab act" id="sktShift" onclick="setSKTab('shift',this)">Shift</button>
         <button class="skt-tab" id="sktAbs" onclick="setSKTab('abs',this)">Absence</button>
+        <button class="skt-tab" id="sktRest" onclick="setSKTab('rest',this)">Repos hebdomadaire</button>
       </div>
       <div id="skPanelShift">
         <div class="sk-subtype-row">
@@ -1254,6 +1301,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
           <textarea class="fta" id="aarNote" placeholder="Description..." style="flex:1;min-height:64px"></textarea>
         </div>
       </div>
+      <div id="skPanelRest" style="display:none">
+        <div class="hr-status-note" style="margin-top:4px"><strong>Repos hebdomadaire :</strong> ajoute une journée de repos visible sur le planning, comptée à 0 heure et exclue du coût salarial.</div>
+        <div class="sk-field-row" style="margin-top:14px;align-items:flex-start">
+          <label class="sk-label" style="padding-top:8px">Notes</label>
+          <textarea class="fta" id="restNote" placeholder="Ex. repos fixe du dimanche" style="flex:1;min-height:64px"></textarea>
+        </div>
+      </div>
       <div class="sk-field-row" style="margin-top:10px;align-items:flex-start" id="skCommentRow">
         <label class="sk-label" style="padding-top:8px">Commentaire</label>
         <textarea class="fta" id="shiftComment" placeholder="Message au collaborateur, consignes..." style="flex:1;min-height:52px"></textarea>
@@ -1273,12 +1327,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <!-- EMPLOYEE MODAL -->
 <div class="overlay" id="ovl-emp" onclick="ooc(event,'ovl-emp')">
   <div class="modal xl">
-    <div class="m-head"><div><div class="m-title" id="empMT">Ajouter un employé</div><div class="m-sub">Dossier RH local inspiré de Skello</div></div><button class="m-x" onclick="cm('ovl-emp')">&#10005;</button></div>
+    <div class="m-head"><div><div class="m-title" id="empMT">Ajouter un employé</div><div class="m-sub">Dossier RH sécurisé PlanniPro</div></div><button class="m-x" onclick="cm('ovl-emp')">&#10005;</button></div>
     <div class="m-body">
       <input type="hidden" id="editEid">
       <div class="hr-local-banner">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        <div><strong>Données conservées uniquement sur cet appareil.</strong><br>Les informations restent dans PlanniPro et les documents sont stockés localement dans le navigateur. Aucun dossier RH n’est envoyé vers un serveur.</div>
+        <div><strong>Dossier RH protégé et synchronisé.</strong><br>Les documents sont conservés uniquement dans le coffre-fort privé Supabase, avec contrôle RBAC, versionnage et journal d’audit. Aucun fichier RH n’est stocké dans le navigateur.</div>
       </div>
       <div class="hr-profile-head">
         <div class="hr-profile-avatar" id="empAvatar">RH</div>
@@ -1299,7 +1353,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <section class="hr-panel act" id="empPanel-identity">
         <div class="hr-grid">
           <div class="hr-section-title">État civil</div>
-          <div class="fg"><label class="fl">Nom complet *</label><input type="text" class="fi" id="eNm" placeholder="ex : Marie Koné" oninput="syncEmpHeader()"></div>
+          <div class="fg"><label class="fl">Prénom *</label><input type="text" class="fi" id="eFirstName" placeholder="ex : Marie" oninput="syncEmpHeader()"></div>
+          <div class="fg"><label class="fl">Nom *</label><input type="text" class="fi" id="eLastName" placeholder="ex : Koné" oninput="syncEmpHeader()"></div>
           <div class="fg"><label class="fl">Nom de naissance</label><input type="text" class="fi" id="eBirthName" placeholder="Si différent"></div>
           <div class="fg"><label class="fl">Date de naissance</label><input type="date" class="fi" id="eDob"></div>
           <div class="fg"><label class="fl">Lieu de naissance</label><input type="text" class="fi" id="ePob" placeholder="Ville, pays"></div>
@@ -1323,9 +1378,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <section class="hr-panel" id="empPanel-contract">
         <div class="hr-grid">
           <div class="hr-section-title">Emploi et statut</div>
-          <div class="fg"><label class="fl">Poste / Fonction</label><input type="text" class="fi" id="eRl" placeholder="ex : Employé de commerce" oninput="syncEmpHeader()"></div>
+          <div class="hr-status-note" style="grid-column:1/-1">Pour un salarié, le poste et la date d’entrée alimentent automatiquement le registre du personnel. Le profil Gérant / TNS reste exclu.</div>
+          <div class="fg"><label class="fl">Poste / Fonction *</label><input type="text" class="fi" id="eRl" placeholder="ex : Employé de commerce" oninput="syncEmpHeader()"></div>
           <div class="fg"><label class="fl">Type de contrat</label><select class="fs" id="eCt" onchange="syncEmployeeContractFields();syncEmpHeader()"><option>CDI</option><option>CDD</option><option>Interim</option><option>Extra</option><option>Apprentissage</option><option>Stage</option><option>Gérant / TNS</option></select></div>
-          <div class="fg"><label class="fl">Date d’entrée</label><input type="date" class="fi" id="eStart"></div>
+          <div class="fg"><label class="fl">Date d’entrée *</label><input type="date" class="fi" id="eStart"></div>
           <div class="fg"><label class="fl">Date de fin</label><input type="date" class="fi" id="eEnd"></div>
           <div class="fg"><label class="fl">Fin de période d’essai</label><input type="date" class="fi" id="eTrialEnd"></div>
           <div class="fg"><label class="fl">Site affecté</label><select class="fs" id="eSt"><option value="">Tous les sites</option></select></div>
@@ -1348,7 +1404,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       </section>
 
       <section class="hr-panel" id="empPanel-amendments">
-        <div class="hr-status-note">Les avenants sont enregistrés dans le dossier local du collaborateur. Le document signé peut ensuite être ajouté dans l’onglet Documents.</div>
+        <div class="hr-status-note">Les informations d’avenant sont synchronisées avec le dossier du collaborateur. Le document signé peut ensuite être déposé dans le coffre-fort RH.</div>
         <div class="hr-grid three">
           <div class="fg"><label class="fl">Type d’avenant</label><select class="fs" id="amType"><option>Horaires</option><option>Rémunération</option><option>Poste / Fonction</option><option>Durée / Renouvellement</option><option>Lieu de travail</option><option>Autre</option></select></div>
           <div class="fg"><label class="fl">Intitulé</label><input type="text" class="fi" id="amTitle" placeholder="ex : Passage à 30 h"></div>
@@ -1363,18 +1419,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       </section>
 
       <section class="hr-panel" id="empPanel-documents">
-        <div id="empDocNewHint" class="hr-list-empty">Enregistrez d’abord le dossier pour pouvoir ajouter des documents.</div>
+        <div id="empDocNewHint" class="hr-list-empty">Enregistrez d’abord le dossier pour ouvrir son coffre-fort documentaire.</div>
         <div id="empDocWorkspace" style="display:none">
-          <div class="hr-doc-drop" onclick="document.getElementById('hrDocFile').click()">
-            <input type="file" id="hrDocFile" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onchange="addHRDocuments(event)">
-            <div style="font-size:22px;margin-bottom:5px">📁</div>
-            <div style="font-size:12.5px;font-weight:750;color:var(--tx1)">Choisir des documents sur cet appareil</div>
-            <div style="font-size:10.5px;color:var(--tx3);margin-top:4px">PDF, Word ou image — 12 Mo maximum par fichier</div>
-          </div>
-          <div class="hr-doc-controls">
-            <div class="fg" style="margin:0"><label class="fl">Catégorie des prochains fichiers</label><select class="fs" id="eDocCat"><option>Contrat</option><option>Avenant</option><option>Identité</option><option>Mutuelle / Prévoyance</option><option>RIB</option><option>Visite médicale</option><option>Formation</option><option>Fiche de paie</option><option>Autre</option></select></div>
-            <div class="fg" style="margin:0"><label class="fl">Date d’expiration</label><input type="date" class="fi" id="eDocExpiry"></div>
-            <button type="button" class="btn btn-outline" onclick="document.getElementById('hrDocFile').click()">Ajouter</button>
+          <div class="hr-doc-drop">
+            <div style="font-size:22px;margin-bottom:5px">🔐</div>
+            <div style="font-size:12.5px;font-weight:750;color:var(--tx1)">Coffre-fort RH sécurisé</div>
+            <div style="font-size:10.5px;color:var(--tx3);margin-top:4px">Stockage Supabase privé · versions conservées · accès audité</div>
+            <button type="button" class="btn btn-primary" style="margin-top:12px" onclick="openEmployeeVault()">Ouvrir le dossier documentaire</button>
           </div>
           <div class="hr-list" id="empDocList"></div>
         </div>
@@ -1421,7 +1472,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
         <div class="fg"><label class="fl">Date d'entree *</label><input type="date" class="fi" id="rEntree"></div>
         <div class="fg"><label class="fl">Date de sortie</label><input type="date" class="fi" id="rSortie"></div>
         <div class="fg"><label class="fl">Motif de sortie</label><select class="fs" id="rMotif"><option value="">&#8212;</option><option>Demission</option><option>Licenciement</option><option>Rupture conventionnelle</option><option>Fin de CDD</option><option>Retraite</option></select></div>
-        <div class="fg"><label class="fl">Lier a un employe</label><select class="fs" id="rEmpLink"><option value="">Optionnel</option></select></div>
+        <div class="fg"><label class="fl">Lier a un employe</label><select class="fs" id="rEmpLink" onchange="prefillRegisterFromEmployee(this.value)"><option value="">Optionnel</option></select></div>
         <div class="fg"><label class="fl">N&#176; securite sociale</label><input type="text" class="fi" id="rNss" placeholder="1 XX XX XX XXX XXX XX"></div>
       </div>
       <div class="fg"><label class="fl">Observations</label><textarea class="fta" id="rObs" placeholder="Remarques..."></textarea></div>
@@ -1575,11 +1626,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <div class="onboarding-body">
       <section class="onboarding-step act" data-step="0">
         <div class="onboarding-icon">▦</div>
-        <div><h3>Planifiez comme dans Skello</h3><p>La vue semaine est votre centre de contrôle. Ajoutez un shift, déplacez-le par glisser-déposer, dupliquez une semaine et verrouillez une période validée.</p><div class="onboarding-points"><span class="onboarding-point">Semaine · Jour · Mois</span><span class="onboarding-point">Modèles d’horaires</span><span class="onboarding-point">Alertes légales</span></div></div>
+        <div><h3>Planifiez avec PlanniPro</h3><p>La vue semaine est votre centre de contrôle. Ajoutez un shift, déplacez-le par glisser-déposer, dupliquez une semaine et verrouillez une période validée.</p><div class="onboarding-points"><span class="onboarding-point">Semaine · Jour · Mois</span><span class="onboarding-point">Modèles d’horaires</span><span class="onboarding-point">Alertes légales</span></div></div>
       </section>
       <section class="onboarding-step" data-step="1">
         <div class="onboarding-icon">♙</div>
-        <div><h3>Centralisez votre équipe</h3><p>Retrouvez les employés, les contrats, les congés, le pointage et le registre unique du personnel depuis la sidebar. Chaque changement reste enregistré sur cet appareil.</p><div class="onboarding-points"><span class="onboarding-point">Équipe &amp; contrats</span><span class="onboarding-point">Pointage</span><span class="onboarding-point">Congés &amp; absences</span></div></div>
+        <div><h3>Centralisez votre équipe</h3><p>Retrouvez les employés, les contrats, les congés, le pointage et le registre unique du personnel depuis la sidebar. Les changements restent disponibles hors ligne puis se synchronisent lorsque votre espace sécurisé est connecté.</p><div class="onboarding-points"><span class="onboarding-point">Équipe &amp; contrats</span><span class="onboarding-point">Pointage</span><span class="onboarding-point">Congés &amp; absences</span></div></div>
       </section>
       <section class="onboarding-step" data-step="2">
         <div class="onboarding-icon">↗</div>
@@ -1646,55 +1697,290 @@ const ERP_CATS = {
   autre:       {lbl:'Autre',       ico:'📝', col:'#6B7280'},
 };
 const CCN = {refH:35, maxH:48, maxDH:10, minRest:11, contingent:180, hs1:0.25, hs2:0.50, night1:0.05, night2:0.20};
+const STATE_STORAGE_KEY = 'ppv3';
+const STATE_DB_NAME = 'plannipro-state';
+const STATE_DB_STORE = 'snapshots';
+const STATE_DB_RECORD = 'current';
 
 let S = {
   employees: [], shifts: [], absences: [],
   punchLog: [], sites: [], erpEntries: [], registre: [],
-  weekStart: null, settings: {legalAlerts:true, overtimeAlert:true, chargesRate:42, otThreshold:35}
+  weekStart: null,
+  settings: {legalAlerts:true, overtimeAlert:true, chargesRate:42, otThreshold:35},
+  meta: {initialized:false, schemaVersion:4}
 };
 let curView = 'planning';
 let showArchived = false;
 let erpFilter = 'all';
 let clockTmr = null;
+let stateWriteQueue = Promise.resolve();
+let stateReady = false;
 
 /* ─── SAVE / LOAD ─── */
-function save() {
+function getBrowserStorage(name) {
   try {
-    localStorage.setItem('ppv3', JSON.stringify(S));
+    return window[name] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function storageGet(name, key) {
+  const storage = getBrowserStorage(name);
+  if (!storage) return null;
+  try {
+    return storage.getItem(key);
+  } catch (e) {
+    return null;
+  }
+}
+
+function storageSet(name, key, value) {
+  const storage = getBrowserStorage(name);
+  if (!storage) return false;
+  try {
+    storage.setItem(key, value);
     return true;
   } catch (e) {
-    // Safari private mode and restricted embedded contexts can reject storage.
-    console.warn('PlanniPro : sauvegarde locale indisponible', e);
     return false;
   }
 }
-function load() {
+
+function parseStateSnapshot(raw, source) {
+  if (!raw) return null;
   try {
-    const d = localStorage.getItem('ppv3');
-    if (d) S = {...S, ...JSON.parse(d)};
-  } catch(e) {
-    console.warn('PlanniPro : lecture de la sauvegarde locale impossible', e);
+    const state = JSON.parse(raw);
+    if (!state || typeof state !== 'object' || Array.isArray(state)) return null;
+    const savedAt = Date.parse(state.meta && state.meta.savedAt ? state.meta.savedAt : '') || 0;
+    return {state, source, savedAt};
+  } catch (e) {
+    console.warn('PlanniPro : sauvegarde locale illisible (' + source + ')', e);
+    return null;
   }
+}
+
+function normalizeState() {
   if (!S.weekStart) S.weekStart = mon(new Date());
   if (!Array.isArray(S.employees)) S.employees = [];
   if (!Array.isArray(S.shifts)) S.shifts = [];
   if (!Array.isArray(S.absences)) S.absences = [];
   if (!Array.isArray(S.punchLog)) S.punchLog = [];
   if (!Array.isArray(S.sites)) S.sites = [];
-  if (!S.sites.length) S.sites = [{id:'s1', name:'Magasin Principal', address:'12 rue du Commerce', icon:'🏪'}];
   if (!Array.isArray(S.erpEntries)) S.erpEntries = [];
   if (!Array.isArray(S.registre)) S.registre = [];
   if (!S.settings || typeof S.settings !== 'object') S.settings = {};
   S.settings = {legalAlerts:true, overtimeAlert:true, chargesRate:42, otThreshold:35, ...S.settings};
+  if (!S.meta || typeof S.meta !== 'object') S.meta = {};
+  S.meta = {initialized:false, schemaVersion:4, ...S.meta};
   S.employees = S.employees.map(normalizeEmployeeRecord);
 }
 
+function isLegacyBundledDemoState(state) {
+  const employeeIds = (state && Array.isArray(state.employees) ? state.employees : [])
+    .map(employee => String(employee && employee.id || ''))
+    .sort();
+  const shifts = state && Array.isArray(state.shifts) ? state.shifts : [];
+  return employeeIds.length === 5
+    && employeeIds.every((id, index) => id === `e${index + 1}`)
+    && shifts.length > 0
+    && shifts.every(shift => /^sd\d+$/.test(String(shift && shift.id || '')));
+}
+
+function applyStateSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return false;
+  S = {...S, ...snapshot};
+  if (!S.meta || typeof S.meta !== 'object') S.meta = {};
+  // Any existing snapshot, including an intentionally empty team, is initialized.
+  S.meta.initialized = true;
+  normalizeState();
+  return true;
+}
+
+function load() {
+  const candidates = [
+    parseStateSnapshot(storageGet('localStorage', STATE_STORAGE_KEY), 'localStorage'),
+    parseStateSnapshot(storageGet('sessionStorage', STATE_STORAGE_KEY), 'sessionStorage')
+  ].filter(candidate => candidate && !isLegacyBundledDemoState(candidate.state));
+
+  candidates.sort((a, b) => {
+    if (b.savedAt !== a.savedAt) return b.savedAt - a.savedAt;
+    return a.source === 'localStorage' ? -1 : 1;
+  });
+
+  if (candidates.length && applyStateSnapshot(candidates[0].state)) {
+    document.documentElement?.setAttribute('data-storage-source', candidates[0].source);
+    return candidates[0].source;
+  }
+
+  normalizeState();
+  return '';
+}
+
+function getIndexedDBFactory() {
+  try {
+    return window.indexedDB || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function openStateDatabase() {
+  return new Promise((resolve, reject) => {
+    const factory = getIndexedDBFactory();
+    if (!factory) {
+      reject(new Error('IndexedDB indisponible'));
+      return;
+    }
+    const request = factory.open(STATE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STATE_DB_STORE)) {
+        db.createObjectStore(STATE_DB_STORE, {keyPath:'id'});
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Ouverture IndexedDB impossible'));
+    request.onblocked = () => reject(new Error('IndexedDB bloquée'));
+  });
+}
+
+async function writeStateToIndexedDB(payload) {
+  const db = await openStateDatabase();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STATE_DB_STORE, 'readwrite');
+      tx.objectStore(STATE_DB_STORE).put({
+        id: STATE_DB_RECORD,
+        payload,
+        savedAt: Date.now()
+      });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Écriture IndexedDB impossible'));
+      tx.onabort = () => reject(tx.error || new Error('Écriture IndexedDB annulée'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function readStateFromIndexedDB() {
+  if (!getIndexedDBFactory()) return null;
+  let db;
+  try {
+    db = await openStateDatabase();
+    const record = await new Promise((resolve, reject) => {
+      const tx = db.transaction(STATE_DB_STORE, 'readonly');
+      const request = tx.objectStore(STATE_DB_STORE).get(STATE_DB_RECORD);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error('Lecture IndexedDB impossible'));
+    });
+    return record ? parseStateSnapshot(record.payload, 'indexedDB') : null;
+  } catch (e) {
+    console.warn('PlanniPro : restauration IndexedDB indisponible', e);
+    return null;
+  } finally {
+    if (db) db.close();
+  }
+}
+
+function queueStateSnapshot(payload) {
+  if (!getIndexedDBFactory()) return false;
+  stateWriteQueue = stateWriteQueue
+    .catch(() => undefined)
+    .then(() => writeStateToIndexedDB(payload))
+    .catch(e => console.warn('PlanniPro : sauvegarde IndexedDB indisponible', e));
+  return true;
+}
+
+function stateSnapshotWithMetadata() {
+  if (!S.meta || typeof S.meta !== 'object') S.meta = {};
+  S.meta = {
+    ...S.meta,
+    initialized:true,
+    schemaVersion:4,
+    savedAt:new Date().toISOString()
+  };
+  return JSON.stringify(S);
+}
+
+function save() {
+  let payload;
+  try {
+    payload = stateSnapshotWithMetadata();
+  } catch (e) {
+    console.warn('PlanniPro : données impossibles à sérialiser', e);
+    return false;
+  }
+
+  // Dès qu'un espace authentifié est actif, les données métier restent dans
+  // IndexedDB et la file de synchronisation privée, pas dans localStorage.
+  const cloudOnly = !!(window.PlanniProCloud && typeof window.PlanniProCloud.usePrivateCache === 'function' && window.PlanniProCloud.usePrivateCache());
+  const localSaved = cloudOnly ? false : storageSet('localStorage', STATE_STORAGE_KEY, payload);
+  const sessionSaved = cloudOnly ? false : storageSet('sessionStorage', STATE_STORAGE_KEY, payload);
+  const indexedDBQueued = queueStateSnapshot(payload);
+  const persisted = localSaved || sessionSaved || indexedDBQueued;
+  document.documentElement?.setAttribute(
+    'data-storage-source',
+    localSaved ? 'localStorage' : sessionSaved ? 'sessionStorage' : indexedDBQueued ? 'indexedDB' : 'unavailable'
+  );
+  if (!persisted) console.warn('PlanniPro : aucun stockage local n’est disponible');
+  return persisted;
+}
+
+function promiseWithTimeout(promise, delay) {
+  return new Promise(resolve => {
+    let finished = false;
+    const timer = setTimeout(() => {
+      if (!finished) {
+        finished = true;
+        resolve(null);
+      }
+    }, delay);
+    promise.then(value => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      resolve(value);
+    }).catch(() => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      resolve(null);
+    });
+  });
+}
+
+async function restoreState() {
+  const immediateSource = load();
+  if (immediateSource) {
+    // Keep a durable local mirror for browsers that later restrict Web Storage.
+    try { queueStateSnapshot(JSON.stringify(S)); } catch (e) { /* optional fallback */ }
+    return immediateSource;
+  }
+
+  const indexedSnapshot = await promiseWithTimeout(readStateFromIndexedDB(), 1200);
+  if (!indexedSnapshot || isLegacyBundledDemoState(indexedSnapshot.state) || !applyStateSnapshot(indexedSnapshot.state)) return '';
+
+  const payload = JSON.stringify(S);
+  storageSet('localStorage', STATE_STORAGE_KEY, payload);
+  storageSet('sessionStorage', STATE_STORAGE_KEY, payload);
+  document.documentElement?.setAttribute('data-storage-source', 'indexedDB');
+  return 'indexedDB';
+}
+
+window.addEventListener('pagehide', function() {
+  if (stateReady) save();
+});
+
 function normalizeEmployeeRecord(emp) {
+  const legacyNames = splitEmployeeName(emp && emp.name ? emp.name : '');
   const identity = {
-    birthName:'', dob:'', pob:'', nationality:'Française', gender:'', nss:'',
+    firstName:'', lastName:'', birthName:'', dob:'', pob:'', nationality:'Française', gender:'', nss:'',
     address:'', zip:'', city:'', emergencyName:'', emergencyPhone:'',
     ...(emp && emp.identity && typeof emp.identity === 'object' ? emp.identity : {})
   };
+  if (!identity.firstName) identity.firstName = legacyNames.firstName;
+  if (!identity.lastName) identity.lastName = legacyNames.lastName;
   const contractDetails = {
     startDate:'', endDate:'', trialEnd:'', classification:'', level:'',
     monthlyHours:null, tnsMonthlyComp:null,
@@ -1702,6 +1988,7 @@ function normalizeEmployeeRecord(emp) {
   };
   const normalized = {
     ...(emp || {}),
+    name:employeeDisplayName(identity.firstName,identity.lastName) || (emp && emp.name ? emp.name : ''),
     contract:normalizeContract(emp && emp.contract ? emp.contract : 'CDI'),
     identity,
     contractDetails,
@@ -1710,6 +1997,122 @@ function normalizeEmployeeRecord(emp) {
   };
   if (!Number.isFinite(Number(normalized.cpSolde))) normalized.cpSolde = isTNS(normalized) ? 0 : 25;
   return normalized;
+}
+
+function splitEmployeeName(name) {
+  const parts=String(name||'').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return {firstName:'',lastName:''};
+  if(parts.length===1) return {firstName:parts[0],lastName:''};
+  return {firstName:parts.slice(0,-1).join(' '),lastName:parts[parts.length-1]};
+}
+
+function employeeDisplayName(firstName,lastName) {
+  return [firstName,lastName].map(v=>String(v||'').trim()).filter(Boolean).join(' ');
+}
+
+function comparableRegisterValue(value) {
+  return String(value||'').trim().toLocaleLowerCase('fr-FR').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+}
+
+function nextRegisterNumber() {
+  const numbers=(S.registre||[]).map(r=>parseInt(r.num,10)).filter(Number.isFinite);
+  return String((numbers.length?Math.max(...numbers):0)+1).padStart(4,'0');
+}
+
+function employeeRegisterData(emp) {
+  const normalized=normalizeEmployeeRecord(emp);
+  const identity=normalized.identity||{};
+  const details=normalized.contractDetails||{};
+  return {
+    nom:String(identity.lastName||'').trim(),
+    prenom:String(identity.firstName||'').trim(),
+    nat:String(identity.nationality||'').trim(),
+    dob:identity.dob||'',
+    sexe:identity.gender||'',
+    poste:String(normalized.role||'').trim(),
+    contrat:normalizeContract(normalized.contract||'CDI'),
+    entree:details.startDate||'',
+    nss:String(identity.nss||'').trim()
+  };
+}
+
+function findEmployeeRegisterEntry(emp) {
+  if(!emp||!Array.isArray(S.registre)) return null;
+  const linked=S.registre.find(r=>r.empId===emp.id);
+  if(linked) return linked;
+  const data=employeeRegisterData(emp);
+  const nss=comparableRegisterValue(data.nss);
+  const fullName=comparableRegisterValue(data.nom+' '+data.prenom);
+  return S.registre.find(r=>{
+    if(r.empId) return false;
+    const sameNss=nss&&comparableRegisterValue(r.nss)===nss;
+    const sameName=fullName&&comparableRegisterValue((r.nom||'')+' '+(r.prenom||''))===fullName;
+    const compatibleDate=!data.entree||!r.entree||r.entree===data.entree;
+    return sameNss||(sameName&&compatibleDate);
+  })||null;
+}
+
+function syncEmployeeRegister(emp,allowCreate=true) {
+  if(!Array.isArray(S.registre)) S.registre=[];
+  if(!emp) return {status:'missing'};
+  const existing=findEmployeeRegisterEntry(emp);
+  if(isTNS(emp)) return {status:'excluded',entry:existing};
+  const data=employeeRegisterData(emp);
+  const missing=[];
+  if(!data.prenom) missing.push('prénom');
+  if(!data.nom) missing.push('nom');
+  if(!data.poste) missing.push('poste');
+  if(!data.entree) missing.push('date d’entrée');
+  if(missing.length) return {status:'incomplete',missing,entry:existing};
+  const syncedAt=new Date().toISOString();
+  if(existing){
+    Object.assign(existing,data,{empId:emp.id,autoManaged:true,lastSyncedAt:syncedAt});
+    return {status:'updated',entry:existing};
+  }
+  if(!allowCreate) return {status:'missing'};
+  const entry={
+    id:'r'+Date.now()+Math.random().toString(36).slice(2,6),
+    num:nextRegisterNumber(),
+    ...data,
+    sortie:'',
+    motif:'',
+    obs:'',
+    empId:emp.id,
+    autoManaged:true,
+    createdAt:syncedAt,
+    lastSyncedAt:syncedAt
+  };
+  S.registre.push(entry);
+  return {status:'created',entry};
+}
+
+function syncAllEmployeesToRegister() {
+  let created=0,updated=0,incomplete=0,excluded=0;
+  S.employees.forEach(emp=>{
+    const result=syncEmployeeRegister(emp,true);
+    if(result.status==='created') created++;
+    else if(result.status==='updated') updated++;
+    else if(result.status==='incomplete') incomplete++;
+    else if(result.status==='excluded') excluded++;
+  });
+  const persisted=save();
+  renderRegistre();
+  if(created||updated) toast(`${created} inscription(s) créée(s), ${updated} actualisée(s)`,'ok');
+  if(incomplete) toast(`${incomplete} dossier(s) incomplet(s) : prénom, nom, poste et date d’entrée requis`,'warn');
+  if(excluded&&!created&&!updated&&!incomplete) toast('Les profils Gérant / TNS restent exclus du registre automatique','info');
+  if(!persisted) toast('Le navigateur bloque la sauvegarde locale : vérifiez ses réglages','err');
+}
+
+function ensureEmployeeRegisterLinks() {
+  let changed=false;
+  S.employees.forEach(emp=>{
+    if(isTNS(emp)) return;
+    const existing=findEmployeeRegisterEntry(emp);
+    if(existing&&existing.empId===emp.id) return;
+    const result=syncEmployeeRegister(emp,true);
+    if(result.status==='created'||result.status==='updated') changed=true;
+  });
+  return changed;
 }
 
 function escapeHTML(value) {
@@ -1948,6 +2351,10 @@ function renderPlanning() {
     lc.onclick=()=>openEmpModal(emp.id); grid.appendChild(lc);
     days.forEach(d=>{
       const cell=el('div','gr-cell'+(d===td?' td':''));
+      // The drag destination is explicit: property handlers do not create an
+      // `onclick` attribute that can be parsed reliably after rendering.
+      cell.dataset.empId=emp.id;
+      cell.dataset.date=d;
       const ds=S.shifts.filter(s=>s.empId===emp.id&&s.date===d);
       if(!ds.length) cell.classList.add('empty');
       cell.onclick=()=>openShiftModal(emp.id,d);
@@ -1959,8 +2366,9 @@ function renderPlanning() {
         const bgCol = isUnpaid?'#9CA3AF':isAbs?'#6B7280':isTask?(sh.taskPrio==='urgente'?'#DC2626':sh.taskPrio==='haute'?'#D97706':'#0284C7'):c;
 
         if (isDouble) {
-          // Skello style: two stacked mini-blocks in one cell
+          // Two stacked mini-blocks in one cell
           const stack = el('div','sh-stack');
+          stack.dataset.shiftId=sh.id; stack.dataset.empId=emp.id; stack.dataset.date=d;
           const h1 = hrs(sh.s,sh.e), h2 = sh.s2&&sh.e2?hrs(sh.s2,sh.e2):0;
           const cost1 = !isTNS(emp)&&sh.s&&sh.e&&emp.rate?+(h1*emp.rate).toFixed(0):0;
           const cost2 = !isTNS(emp)&&sh.s2&&sh.e2&&emp.rate?+(h2*emp.rate).toFixed(0):0;
@@ -2089,7 +2497,7 @@ function renderTimesheet() {
     const es=S.shifts.filter(s=>s.empId===emp.id&&days.includes(s.date));
     const tPlanned=+es.reduce((a,s)=>a+shiftHrs(s),0).toFixed(2);
     const logs=S.punchLog.filter(p=>p.empId===emp.id&&days.includes(p.date)&&p.out);
-    const tActual=logs.reduce((a,p)=>a+p.dur,0);
+    const tActual=logs.reduce((a,p)=>a+punchEffectiveDuration(p),0);
     const diff=logs.length?tActual-tPlanned:null;
     const hs=isTNS(emp)?0:Math.max(0,tPlanned-(emp.maxH||CCN.refH));
     const cost=es.reduce((a,s)=>a+sCost(s),0);
@@ -2109,11 +2517,42 @@ function renderTimesheet() {
 
 /* ═══ RENDER — POINTAGE ═══ */
 /* ═══════════════════════════════════════════════════════
-   BADGEUSE — SKELLO STYLE
+   BADGEUSE — PLANNIPRO
 ═══════════════════════════════════════════════════════ */
 let ptCurrentDay = null; // YYYY-MM-DD
 let ptTab = 'prevus';
 let ptClockTimer = null;
+
+function isExternalTimeClockPunch(punch) {
+  return !!punch && punch.source === 'external-time-clock';
+}
+
+function hasPunchAdjustmentValue(adjustment, key) {
+  return !!adjustment && Object.prototype.hasOwnProperty.call(adjustment, key);
+}
+
+function punchDisplay(punch) {
+  if (!punch) return {in:'',out:'',pauseMin:0,dur:0,isExternal:false,isAdjusted:false};
+  const adjustment = punch.adjustment && typeof punch.adjustment === 'object' ? punch.adjustment : {};
+  const isExternal = isExternalTimeClockPunch(punch);
+  const rawIn = String(isExternal ? (punch.rawIn ?? punch.in ?? '') : (punch.in ?? ''));
+  const rawOut = String(isExternal ? (punch.rawOut ?? punch.out ?? '') : (punch.out ?? ''));
+  const rawPause = Number(isExternal ? (punch.rawPauseMin ?? punch.pauseMin ?? 0) : (punch.pauseMin ?? 0)) || 0;
+  const inTime = hasPunchAdjustmentValue(adjustment,'in') ? String(adjustment.in ?? '') : rawIn;
+  const outTime = hasPunchAdjustmentValue(adjustment,'out') ? String(adjustment.out ?? '') : rawOut;
+  const pauseMin = hasPunchAdjustmentValue(adjustment,'pauseMin') ? Math.max(0,Number(adjustment.pauseMin) || 0) : rawPause;
+  const dur = inTime && outTime ? Math.max(0,hrs(inTime,outTime)-pauseMin/60) : 0;
+  return {
+    in:inTime, out:outTime, pauseMin, dur, rawIn, rawOut, rawPause,
+    isExternal, isAdjusted:isExternal && Object.keys(adjustment).some(key=>['in','out','pauseMin'].includes(key))
+  };
+}
+
+function punchEffectiveDuration(punch) {
+  if (!punch) return 0;
+  const display = punchDisplay(punch);
+  return display.in && display.out ? display.dur : (Number(punch.dur) || 0);
+}
 
 function changePtDay(n) {
   if (!ptCurrentDay) ptCurrentDay = today();
@@ -2184,20 +2623,88 @@ function renderPointage() {
     });
   }
 
+  updatePointageProfileActions();
+
   renderPtTable();
 }
 
-function ptTimeInputs(bIn, bOut, empId, date, isAbs) {
+function getSelectedPointageEmployee() {
+  const selector = document.getElementById('punchSel');
+  const employeeId = selector ? selector.value : '';
+  return employeeId ? S.employees.find(emp => emp.id === employeeId) || null : null;
+}
+
+function getOrphanPointageRecords() {
+  const employeeIds = new Set(S.employees.map(emp => emp.id));
+  return S.punchLog.filter(record => !record || !employeeIds.has(record.empId));
+}
+
+function updatePointageProfileActions() {
+  const employee = getSelectedPointageEmployee();
+  ['ptOpenProfileBtn', 'ptDeleteProfileBtn'].forEach(id => {
+    const button = document.getElementById(id);
+    if (button) button.disabled = !employee;
+  });
+
+  const cleanupButton = document.getElementById('ptCleanOrphansBtn');
+  if (cleanupButton) {
+    const orphanCount = getOrphanPointageRecords().length;
+    cleanupButton.style.display = orphanCount ? '' : 'none';
+    cleanupButton.textContent = orphanCount === 1
+      ? 'Nettoyer 1 pointage orphelin'
+      : 'Nettoyer ' + orphanCount + ' pointages orphelins';
+  }
+}
+
+function openSelectedPointageProfile() {
+  const employee = getSelectedPointageEmployee();
+  if (!employee) {
+    toast('Sélectionnez d’abord un profil', 'err');
+    return;
+  }
+  openEmpModal(employee.id);
+}
+
+async function deleteSelectedPointageProfile() {
+  const employee = getSelectedPointageEmployee();
+  if (!employee) {
+    toast('Sélectionnez le profil fictif à supprimer', 'err');
+    return false;
+  }
+  return deleteEmp(employee.id, 'pointage');
+}
+
+function cleanOrphanPointages() {
+  const orphaned = getOrphanPointageRecords();
+  if (!orphaned.length) {
+    toast('Aucun pointage orphelin à supprimer', 'info');
+    updatePointageProfileActions();
+    return 0;
+  }
+  const label = orphaned.length === 1 ? 'ce pointage' : 'ces ' + orphaned.length + ' pointages';
+  if (!confirm('Supprimer ' + label + ' lié(s) à un profil qui n’existe plus ? Les collaborateurs actifs et le registre du personnel ne seront pas modifiés.')) {
+    return 0;
+  }
+  S.punchLog = S.punchLog.filter(record => record && S.employees.some(emp => emp.id === record.empId));
+  save();
+  renderPointage();
+  toast(orphaned.length + ' pointage' + (orphaned.length > 1 ? 's supprimés' : ' supprimé'), 'ok');
+  return orphaned.length;
+}
+
+function ptTimeInputs(bIn, bOut, empId, date, isAbs, isExternal) {
   if (isAbs) return '<span style="color:var(--tx3)">—</span>';
   const makeIn = document.createElement('input');
   makeIn.type='time'; makeIn.className='pt-time-input';
   makeIn.value=bIn||''; makeIn.style.color='var(--grn)';
   makeIn.dataset.eid=empId; makeIn.dataset.date=date;
+  if (isExternal) makeIn.title='Correction manager : le badge tablette brut est conservé';
   makeIn.setAttribute('onchange','updatePunch(this,"in")');
   const makeOut = document.createElement('input');
   makeOut.type='time'; makeOut.className='pt-time-input';
   makeOut.value=bOut||''; makeOut.style.color='#1E88E5';
   makeOut.dataset.eid=empId; makeOut.dataset.date=date;
+  if (isExternal) makeOut.title='Correction manager : le badge tablette brut est conservé';
   makeOut.setAttribute('onchange','updatePunch(this,"out")');
   const sep = document.createElement('span');
   sep.style.cssText='color:var(--tx3);font-size:11px;margin:0 4px'; sep.textContent='–';
@@ -2205,12 +2712,12 @@ function ptTimeInputs(bIn, bOut, empId, date, isAbs) {
   wrap.appendChild(makeIn); wrap.appendChild(sep); wrap.appendChild(makeOut);
   return wrap.innerHTML;
 }
-function ptPauseInput(pauseMin, empId, date, isAbs) {
+function ptPauseInput(pauseMin, empId, date, isAbs, isExternal) {
   if (isAbs) return '—';
   const inp = document.createElement('input');
   inp.type='number'; inp.className='pt-pause-input';
   inp.value=pauseMin||0; inp.min=0; inp.max=120; inp.step=5;
-  inp.dataset.eid=empId; inp.dataset.date=date; inp.title='Minutes de pause';
+  inp.dataset.eid=empId; inp.dataset.date=date; inp.title=isExternal?'Correction manager : le badge tablette brut est conservé':'Minutes de pause';
   inp.setAttribute('onchange','updatePunchPause(this)');
   return inp.outerHTML + ' mn';
 }
@@ -2225,14 +2732,18 @@ function renderPtTable() {
   const dayShifts = S.shifts.filter(s => s.date === d && s.shiftType !== 'task');
   const absShifts = dayShifts.filter(s => s.shiftType === 'abs' || s.shiftType === 'aar');
   const workShifts = dayShifts.filter(s => s.shiftType !== 'abs' && s.shiftType !== 'aar');
+  const scheduledEmployeeIds = new Set(workShifts.map(shift => shift.empId));
+  const unplannedTabletRows = S.punchLog
+    .filter(punch => punch && punch.date === d && isExternalTimeClockPunch(punch) && !scheduledEmployeeIds.has(punch.empId) && S.employees.some(emp => emp.id === punch.empId))
+    .map(punch => ({id:'unplanned-'+punch.id,empId:punch.empId,date:d,s:'',e:'',pauseMin:0,shiftType:'external-unplanned',externalUnplanned:true}));
 
   // Update tab counts
   const prevEl = document.getElementById('ptPrevusCnt');
   const absEl  = document.getElementById('ptAbsCnt');
-  if (prevEl) prevEl.textContent = workShifts.length ? '('+workShifts.length+')' : '';
+  if (prevEl) prevEl.textContent = (workShifts.length + unplannedTabletRows.length) ? '('+(workShifts.length + unplannedTabletRows.length)+')' : '';
   if (absEl)  absEl.textContent  = absShifts.length  ? '('+absShifts.length+')'  : '';
 
-  const source = ptTab === 'abs' ? absShifts : workShifts;
+  const source = ptTab === 'abs' ? absShifts : [...workShifts, ...unplannedTabletRows];
 
   if (!source.length) {
     body.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:40px;color:var(--tx3)">'
@@ -2249,16 +2760,17 @@ function renderPtTable() {
     const c  = col(ei);
 
     // Planned hours
-    const plannedH = shiftHrs(sh);
+    const plannedH = sh.s && sh.e ? shiftHrs(sh) : 0;
     const plannedPause = sh.pauseMin || 0;
 
     // Badged entry
     const punches = S.punchLog.filter(p => p.empId === sh.empId && p.date === d);
     const punch   = punches[punches.length - 1]; // last punch of the day
-    const hasBadge = punch && (punch.in || punch.out);
-    const badgedIn  = (punch && punch.in)  || '';
-    const badgedOut = (punch && punch.out) || '';
-    const badgedPause = (punch && punch.pauseMin) || plannedPause;
+    const displayPunch = punchDisplay(punch);
+    const hasBadge = punch && (displayPunch.in || displayPunch.out);
+    const badgedIn  = displayPunch.in || '';
+    const badgedOut = displayPunch.out || '';
+    const badgedPause = punch ? displayPunch.pauseMin : plannedPause;
     const badgedH = (badgedIn && badgedOut)
       ? Math.max(0, hrs(badgedIn, badgedOut) - badgedPause/60)
       : 0;
@@ -2275,6 +2787,7 @@ function renderPtTable() {
     totPause   += remunPause;
 
     const isAbsRow = sh.shiftType === 'abs' || sh.shiftType === 'aar';
+    const isUnplannedTablet = !!sh.externalUnplanned;
     const isUnpaidAbs = isAbsRow && UNPAID_ABS.has(sh.aarType);
     const bgRow = isUnpaidAbs ? '#f9fafb' : '';
 
@@ -2284,31 +2797,37 @@ function renderPtTable() {
     const tr = document.createElement('tr');
     tr.style.background = bgRow;
     tr.innerHTML = '<td style="text-align:center">'
-        + '<input type="checkbox" class="pt-validate-cb" '+(isValidated?'checked':'')
-        +' onchange="setPtValidated(this)" data-sid="'+sh.id+'" data-date="'+d+'" title="Valider"></td>'
+        + (isUnplannedTablet
+          ? '<span title="Pointage hors planning à vérifier" style="color:var(--org);font-weight:800">!</span>'
+          : '<input type="checkbox" class="pt-validate-cb" '+(isValidated?'checked':'')
+            +' onchange="setPtValidated(this)" data-sid="'+sh.id+'" data-date="'+d+'" title="Valider">')+'</td>'
       + '<td><div style="display:flex;align-items:center;gap:8px">'
         + '<div style="width:28px;height:28px;border-radius:50%;background:'+c+';display:grid;place-items:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0">'+emp.name[0]+'</div>'
         + '<div><div style="font-weight:700;font-size:13px">'+emp.name+'</div>'
         + '<div style="font-size:10px;color:var(--tx3)">'+( emp.role||'—')+'</div></div></div></td>'
-      + '<td>' + (isAbsRow
-          ? '<span class="badge-chip planned" style="background:#6B7280">'+sh.aarType+'</span>'
-          : '<span class="badge-chip planned">'+sh.s+'</span> <span style="color:var(--tx3);font-size:11px">–</span> <span class="badge-chip planned">'+sh.e+'</span>')
+      + '<td>' + (isUnplannedTablet
+          ? '<span style="font-size:11px;color:var(--org);font-weight:700">Non planifié</span>'
+          : isAbsRow
+            ? '<span class="badge-chip planned" style="background:#6B7280">'+sh.aarType+'</span>'
+            : '<span class="badge-chip planned">'+sh.s+'</span> <span style="color:var(--tx3);font-size:11px">–</span> <span class="badge-chip planned">'+sh.e+'</span>')
         + '</td>'
       + '<td>' + (plannedPause > 0
           ? '<span class="badge-pause">'+plannedPause+' mn</span>'
           : '<span class="badge-pause zero">0 mn</span>') + '</td>'
       // Badgeuse icon / status
       + '<td style="text-align:center">'
-        + (hasBadge
+        + (displayPunch.isExternal
+          ? '<span title="Badge enregistré depuis la pointeuse tablette" style="display:inline-flex;align-items:center;gap:4px;padding:4px 6px;border-radius:7px;background:#E8F0FF;color:#4052C7;font-size:10px;font-weight:800">⌁ Tablette'+(displayPunch.isAdjusted?' · corrigé':'')+'</span>'
+          : hasBadge
           ? '<svg viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M14 8l3 4-3 4"/></svg>'
           : '<span style="color:var(--tx3);font-size:11px;font-weight:600">Pas de badge</span>')
         + '</td>'
       // Badged times (editable)
-      + '<td>' + ptTimeInputs(badgedIn, badgedOut, sh.empId, d, isAbsRow) + '</td>'
+      + '<td>' + ptTimeInputs(badgedIn, badgedOut, sh.empId, d, isAbsRow, displayPunch.isExternal) + '</td>'
       // (merged)
       // (merged)
       // (merged)
-      + '<td>' + ptPauseInput(badgedPause, sh.empId, d, isAbsRow) + '</td>'
+      + '<td>' + ptPauseInput(badgedPause, sh.empId, d, isAbsRow, displayPunch.isExternal) + '</td>'
       // Badged pause (editable)
       // (merged)
       // (merged)
@@ -2333,10 +2852,14 @@ function renderPtTable() {
           : '<span style="color:var(--tx1)">'+remunH.toFixed(2)+'h</span>')
         + '</td>'
       // Notes
-      + '<td><input type="text" class="fi" style="font-size:11.5px;padding:4px 8px;height:28px" placeholder="Notes..." value="'+savedNote+'"'
-        + ' onchange="setPtNote(this)" data-sid="'+sh.id+'" data-date="'+d+'" ></td>'
+      + '<td>'+(isUnplannedTablet
+        ? '<span style="font-size:10px;color:var(--org)">À rapprocher du planning</span>'
+        : '<input type="text" class="fi" style="font-size:11.5px;padding:4px 8px;height:28px" placeholder="Notes..." value="'+savedNote+'"'
+          + ' onchange="setPtNote(this)" data-sid="'+sh.id+'" data-date="'+d+'" >')+'</td>'
       // Actions
-      + '<td><button class="btn btn-outline btn-sm" data-eid2="'+sh.empId+'" data-date2="'+d+'" data-sid2="'+sh.id+'" onclick="this.closest(\'tr\').querySelector(\'button\');openShiftModal(this.dataset.eid2,this.dataset.date2,this.dataset.sid2)" title="Modifier shift">✏️</button></td>';
+      + '<td>'+(isUnplannedTablet
+        ? '<button class="btn btn-outline btn-sm" data-eid2="'+sh.empId+'" data-date2="'+d+'" onclick="openShiftModal(this.dataset.eid2,this.dataset.date2)" title="Créer le shift manquant">+ Shift</button>'
+        : '<button class="btn btn-outline btn-sm" data-eid2="'+sh.empId+'" data-date2="'+d+'" data-sid2="'+sh.id+'" onclick="this.closest(\'tr\').querySelector(\'button\');openShiftModal(this.dataset.eid2,this.dataset.date2,this.dataset.sid2)" title="Modifier shift">✏️</button>')+'</td>';
 
     body.appendChild(tr);
   });
@@ -2360,19 +2883,27 @@ function renderPtTable() {
 /* ── Pointage edit helpers ── */
 function updatePunch(el, type) {
   const empId=el.dataset.eid, date=el.dataset.date, value=el.value;
-  let punch = S.punchLog.find(p => p.empId===empId && p.date===date);
+  let punch = S.punchLog.filter(p => p.empId===empId && p.date===date).slice(-1)[0];
   if (!punch) { punch={id:'p'+Date.now(),empId,date,in:'',out:'',dur:0,pauseMin:0}; S.punchLog.push(punch); }
-  punch[type] = value;
-  if (punch.in && punch.out) punch.dur = Math.max(0, hrs(punch.in,punch.out)-(punch.pauseMin||0)/60);
+  if (isExternalTimeClockPunch(punch)) {
+    punch.adjustment={...(punch.adjustment||{}),[type]:value,updatedAt:new Date().toISOString(),source:'manager-correction'};
+  } else {
+    punch[type] = value;
+    if (punch.in && punch.out) punch.dur = Math.max(0, hrs(punch.in,punch.out)-(punch.pauseMin||0)/60);
+  }
   save(); renderPtTable();
 }
 
 function updatePunchPause(el) {
   const empId=el.dataset.eid, date=el.dataset.date, pauseMin=+el.value;
-  let punch = S.punchLog.find(p => p.empId===empId && p.date===date);
+  let punch = S.punchLog.filter(p => p.empId===empId && p.date===date).slice(-1)[0];
   if (!punch) return;
-  punch.pauseMin = pauseMin;
-  if (punch.in && punch.out) punch.dur = Math.max(0, hrs(punch.in,punch.out)-pauseMin/60);
+  if (isExternalTimeClockPunch(punch)) {
+    punch.adjustment={...(punch.adjustment||{}),pauseMin,updatedAt:new Date().toISOString(),source:'manager-correction'};
+  } else {
+    punch.pauseMin = pauseMin;
+    if (punch.in && punch.out) punch.dur = Math.max(0, hrs(punch.in,punch.out)-pauseMin/60);
+  }
   save(); renderPtTable();
 }
 
@@ -2453,7 +2984,7 @@ function renderRegistre() {
     const active=!r.sortie;
     body.innerHTML+=`<tr>
       <td style="font-weight:700;color:var(--tx3)">${r.num||'—'}</td>
-      <td><div style="font-weight:700">${r.nom} ${r.prenom}</div>${emp?`<div style="font-size:10px;color:var(--tx3);display:flex;align-items:center;gap:3px"><div style="width:10px;height:10px;border-radius:50%;background:${col(ei)};display:inline-block"></div>${emp.name}</div>`:''}</td>
+      <td><div style="font-weight:700">${r.nom} ${r.prenom}</div>${emp?`<div style="font-size:10px;color:var(--tx3);display:flex;align-items:center;gap:4px"><div style="width:10px;height:10px;border-radius:50%;background:${col(ei)};display:inline-block"></div>${emp.name}${r.autoManaged?'<span class="hr-mini-chip" style="padding:1px 5px">Auto RH</span>':''}</div>`:''}</td>
       <td>${r.nat||'—'}</td>
       <td>${r.dob?fmtDate(r.dob,{day:'2-digit',month:'2-digit',year:'numeric'}):'—'}</td>
       <td>${r.sexe||'—'}</td>
@@ -2587,6 +3118,7 @@ function renderAll() {
   if(curView==='timesheet') renderTimesheet();
   if(curView==='pointage') renderPointage();
   if(curView==='hr') renderHR();
+  if(curView==='vault') window.PlanniProVault?.render();
   if(curView==='registre') renderRegistre();
   if(curView==='erp') renderERP();
   if(curView==='analytics') renderAnalytics();
@@ -2594,11 +3126,12 @@ function renderAll() {
 }
 
 /* ═══ VIEW SWITCHING ═══ */
-const VIEW_TITLES={planning:'Planning hebdomadaire',employees:'Gestion de l\'équipe',timesheet:'Feuilles de temps',pointage:'Pointage',hr:'Congés & Absences',registre:'Registre du personnel',erp:'ERP — Gestion opérationnelle',analytics:'Tableau de bord',rapport:'Rapport mensuel',settings:'Paramètres'};
-const VIEW_BTN={planning:'+ Nouveau shift',employees:'+ Ajouter un employé',hr:'+ Nouvelle demande',registre:'+ Ajouter au registre',erp:'+ Nouvelle entrée'};
-const VIEW_BTN_FN={planning:()=>openShiftModal(null,null),employees:openEmpModal,hr:openAbsModal,registre:openRegModal,erp:openErpModal};
+const VIEW_TITLES={planning:'Planning hebdomadaire',employees:'Gestion de l\'équipe',timesheet:'Feuilles de temps',pointage:'Pointage',hr:'Congés & Absences',vault:'Coffre-fort RH',registre:'Registre du personnel',erp:'ERP — Gestion opérationnelle',analytics:'Tableau de bord',rapport:'Rapport mensuel',settings:'Paramètres'};
+const VIEW_BTN={planning:'+ Nouveau shift',employees:'+ Ajouter un employé',hr:'+ Nouvelle demande',registre:'+ Nouveau collaborateur',erp:'+ Nouvelle entrée'};
+const VIEW_BTN_FN={planning:()=>openShiftModal(null,null),employees:openEmpModal,hr:openAbsModal,registre:openEmpModal,erp:openErpModal};
 
 function goView(v) {
+  if(v==='vault' && window.PlanniProCloud?.require && !window.PlanniProCloud.require('documents','view')) return;
   curView=v;
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('act'));
   document.getElementById('view-'+v).classList.add('act');
@@ -2617,6 +3150,7 @@ function goView(v) {
   else mb.style.display='none';
   if(v==='pointage'){startClock();const sel=document.getElementById('punchSel');if(sel){sel.innerHTML='<option value="">Choisir...</option>';activeEmps().forEach(e=>{sel.innerHTML+=`<option value="${e.id}">${e.name}</option>`;});}}
   renderAll();
+  if(v==='vault') window.PlanniProVault?.refresh();
 }
 
 /* ═══ SIDEBAR ═══ */
@@ -2628,21 +3162,17 @@ function toggleSb() {
 
 function toggleSbFull() {
   var sb = document.getElementById('mainSb');
-  var isHidden = sb.classList.contains('hidden');
-  var isCol = sb.classList.contains('col');
+  var isMobile = window.innerWidth <= 768;
 
-  if (isHidden) {
-    // Show: expand to collapsed (icon-only) first
-    sb.classList.remove('hidden');
-    sb.classList.add('col');
-    document.getElementById('sbBackdrop').classList.remove('show');
-  } else if (isCol) {
-    // Was collapsed -> expand to full
-    sb.classList.remove('col');
+  if (isMobile) {
+    if (sb.classList.contains('hidden')) {
+      sb.classList.remove('hidden', 'col');
+    } else {
+      sb.classList.add('hidden');
+    }
   } else {
-    // Was full -> hide completely
-    sb.classList.add('hidden');
-    document.getElementById('sbBackdrop').classList.remove('show');
+    sb.classList.remove('hidden');
+    sb.classList.toggle('col');
   }
   syncSbTab();
 }
@@ -2666,22 +3196,12 @@ function syncSbTab() {
   if (!tab) return;
   var isHidden = sb.classList.contains('hidden');
   var isCol = sb.classList.contains('col');
-  // Tab position matches sidebar width
-  if (isHidden) {
-    tab.style.left = '0';
-    tab.classList.remove('open');
-  } else if (isCol) {
-    tab.style.left = 'var(--sbc)';
-    tab.classList.add('open');
-  } else {
-    tab.style.left = 'var(--sb)';
-    tab.classList.add('open');
-  }
-  // Arrow direction: points left when open (to close), right when closed (to open)
-  var svg = tab.querySelector('svg');
-  if (svg) {
-    svg.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
-  }
+  var isExpanded = !isHidden && !isCol;
+  tab.classList.toggle('open', !isHidden);
+  tab.classList.toggle('col', isCol);
+  tab.setAttribute('aria-expanded', String(isExpanded));
+  tab.setAttribute('aria-label', isExpanded ? 'Réduire le menu' : 'Afficher le menu');
+  tab.title = isExpanded ? 'Réduire le menu' : 'Afficher le menu';
 }
 
 // Touch/swipe support
@@ -2731,9 +3251,9 @@ function ooc(e,id){if(e.target===document.getElementById(id))cm(id);}
 
 /* ─── SHIFT MODAL ─── */
 /* ═══════════════════════════════════════════════════════
-   SKELLO SHIFT MODAL — state & controllers
+   MODALE D’HORAIRES — état et contrôleurs
 ═══════════════════════════════════════════════════════ */
-let _skTab   = 'shift';  // 'shift' | 'abs'
+let _skTab   = 'shift';  // 'shift' | 'abs' | 'rest'
 let _skSub   = 'work';   // 'work' | 'double' | 'task'
 let _skPrio  = 'normal'; // task priority
 
@@ -2742,8 +3262,10 @@ function setSKTab(tab, btn) {
   _skTab = tab;
   document.getElementById('sktShift').classList.toggle('act', tab==='shift');
   document.getElementById('sktAbs').classList.toggle('act', tab==='abs');
+  document.getElementById('sktRest').classList.toggle('act', tab==='rest');
   document.getElementById('skPanelShift').style.display = tab==='shift' ? '' : 'none';
   document.getElementById('skPanelAbs').style.display   = tab==='abs'   ? '' : 'none';
+  document.getElementById('skPanelRest').style.display  = tab==='rest'  ? '' : 'none';
   document.getElementById('shiftSaveBtn').textContent = document.getElementById('editSid').value ? 'Enregistrer' : 'Créer';
   updatePrev();
 }
@@ -2798,7 +3320,9 @@ function openShiftModal(empId, date, shiftId, preStart, preEnd) {
 
   /* Determine tab and sub from shift data */
   const storedType = sh ? (sh.shiftType || 'work') : 'work';
-  if (storedType === 'aar' || storedType === 'abs') {
+  if ((storedType === 'aar' || storedType === 'abs') && sh && sh.aarType==='Repos hebdomadaire') {
+    _skTab = 'rest'; _skSub = 'work';
+  } else if (storedType === 'aar' || storedType === 'abs') {
     _skTab = 'abs'; _skSub = 'work';
   } else {
     _skTab = 'shift'; _skSub = storedType;
@@ -2820,7 +3344,7 @@ function openShiftModal(empId, date, shiftId, preStart, preEnd) {
 
   /* AAR fields */
   const aarTypeSel = document.getElementById('aarType');
-  if (aarTypeSel) aarTypeSel.value = sh ? (sh.aarType || 'Absence autorisée rémunérée') : 'Absence autorisée rémunérée';
+  if (aarTypeSel) aarTypeSel.value = sh ? (sh.aarType || 'Absence autorisee remunere') : 'Absence autorisee remunere';
 
   /* AAR duration radio */
   const storedDur = sh ? (sh.aarDuration || 'full') : 'full';
@@ -2835,6 +3359,7 @@ function openShiftModal(empId, date, shiftId, preStart, preEnd) {
 
   const aarHoursEl = document.getElementById('aarHours');
   if (aarHoursEl) aarHoursEl.value = sh ? (sh.aarHours || 8) : 8;
+  document.getElementById('restNote').value = sh&&sh.aarType==='Repos hebdomadaire' ? (sh.note||'') : '';
 
   /* Task */
   const taskCatEl = document.getElementById('taskCat');
@@ -2855,7 +3380,7 @@ function openShiftModal(empId, date, shiftId, preStart, preEnd) {
 
   /* Title and save btn */
   document.getElementById('shiftMT').textContent = sh
-    ? (storedType==='aar'||storedType==='abs' ? 'Modifier une absence' : 'Modifier le shift')
+    ? (_skTab==='rest' ? 'Modifier le repos hebdomadaire' : storedType==='aar'||storedType==='abs' ? 'Modifier une absence' : 'Modifier le shift')
     : 'Ajouter un shift';
   document.getElementById('shiftSaveBtn').textContent = sh ? 'Enregistrer' : 'Cr\u00E9er';
 
@@ -2873,6 +3398,13 @@ function updatePrev() {
   const pb    = document.getElementById('prevBar');
   const emp   = empId ? S.employees.find(x=>x.id===empId) : null;
   const rate  = emp && emp.rate ? emp.rate : 0;
+
+  if (_skTab === 'rest') {
+    document.getElementById('pvH').textContent = '0h';
+    document.getElementById('pvC').textContent = '0 €';
+    pb.style.display = empId ? 'flex' : 'none';
+    return;
+  }
 
   if (_skTab === 'abs') {
     /* AAR duration calc */
@@ -2948,7 +3480,17 @@ function saveShift() {
 
   let shiftData = { empId, date, comment };
 
-  if (_skTab === 'abs') {
+  if (_skTab === 'rest') {
+    shiftData = {
+      ...shiftData,
+      shiftType:'abs',
+      aarType:'Repos hebdomadaire',
+      aarDuration:'full',
+      aarHours:0,
+      note:document.getElementById('restNote').value.trim(),
+      s:'00:00',e:'23:59',s2:'',e2:''
+    };
+  } else if (_skTab === 'abs') {
     /* Absence */
     const aarType    = document.getElementById('aarType').value;
     const durRadio   = document.querySelector('input[name="aarDur"]:checked');
@@ -3025,7 +3567,7 @@ function setEmpTab(tab) {
 }
 
 function syncEmpHeader() {
-  const name=(document.getElementById('eNm')?.value||'').trim();
+  const name=employeeDisplayName(document.getElementById('eFirstName')?.value,document.getElementById('eLastName')?.value);
   const role=(document.getElementById('eRl')?.value||'').trim();
   const contract=normalizeContract(document.getElementById('eCt')?.value||'CDI');
   const nameEl=document.getElementById('empHeaderName');
@@ -3036,7 +3578,7 @@ function syncEmpHeader() {
   if(subEl) subEl.textContent=(role||'Fonction à renseigner')+' · '+contract;
   if(avatar) avatar.textContent=employeeInitials(name);
   if(status){
-    status.textContent=isTNSContract(contract)?'Gérant · hors paie salariée':'Dossier RH local';
+    status.textContent=isTNSContract(contract)?'Gérant · hors registre':'RH + registre auto';
     status.className='sbadge '+(isTNSContract(contract)?'sb-warn':'sb-plan');
   }
 }
@@ -3071,7 +3613,8 @@ function openEmpModal(id) {
   document.getElementById('empMT').textContent=emp?'Dossier RH — '+emp.name:'Nouveau dossier RH';
   const identity=emp?emp.identity:{};
   const details=emp?emp.contractDetails:{};
-  setFormValue('eNm',emp?emp.name:'');
+  setFormValue('eFirstName',identity.firstName||'');
+  setFormValue('eLastName',identity.lastName||'');
   setFormValue('eBirthName',identity.birthName||'');
   setFormValue('eDob',identity.dob||'');
   setFormValue('ePob',identity.pob||'');
@@ -3131,13 +3674,42 @@ function openEmpModal(id) {
   om('ovl-emp');
 }
 
+function openManagerModal() {
+  const existing=S.employees.find(emp=>isTNS(emp)&&!emp.archived);
+  if(existing){
+    openEmpModal(existing.id);
+    toast('La fiche du gérant existe déjà : elle a été ouverte','info');
+    return;
+  }
+  openEmpModal();
+  setFormValue('eCt','Gérant / TNS');
+  setFormValue('eRl','Gérant');
+  setFormValue('eStart',today());
+  setFormValue('eMx',40);
+  setFormValue('eRt','');
+  setFormValue('eCp',0);
+  document.getElementById('empMT').textContent='Créer la fiche du gérant';
+  syncEmployeeContractFields();
+  syncEmpHeader();
+  setEmpTab('identity');
+}
+
 function saveEmp() {
-  const name=document.getElementById('eNm').value.trim();
-  if(!name){toast('Le nom est requis','err');return;}
+  const firstName=document.getElementById('eFirstName').value.trim();
+  const lastName=document.getElementById('eLastName').value.trim();
+  if(!firstName||!lastName){setEmpTab('identity');toast('Le prénom et le nom sont requis','err');return;}
+  const name=employeeDisplayName(firstName,lastName);
   const contract=normalizeContract(document.getElementById('eCt').value);
   const role=document.getElementById('eRl').value.trim() || (contract==='Gérant / TNS'?'Gérant':'');
+  const enteredStartDate=document.getElementById('eStart').value;
   const maxH=optionalNumber('eMx');
   const tns=isTNSContract(contract);
+  const startDate=enteredStartDate||(tns?today():'');
+  if(!tns&&(!role||!startDate)){
+    setEmpTab('contract');
+    toast('Le poste et la date d’entrée sont requis pour alimenter le registre','err');
+    return;
+  }
   const data={
     name,
     role,
@@ -3150,6 +3722,8 @@ function saveEmp() {
     note:document.getElementById('eNo').value.trim(),
     cpSolde:tns?0:(optionalNumber('eCp')==null?25:optionalNumber('eCp')),
     identity:{
+      firstName,
+      lastName,
       birthName:document.getElementById('eBirthName').value.trim(),
       dob:document.getElementById('eDob').value,
       pob:document.getElementById('ePob').value.trim(),
@@ -3163,7 +3737,7 @@ function saveEmp() {
       emergencyPhone:document.getElementById('eEmergencyPhone').value.trim()
     },
     contractDetails:{
-      startDate:document.getElementById('eStart').value,
+      startDate,
       endDate:document.getElementById('eEnd').value,
       trialEnd:document.getElementById('eTrialEnd').value,
       classification:document.getElementById('eClass').value.trim(),
@@ -3174,20 +3748,36 @@ function saveEmp() {
     amendments:_empDraftAmendments.map(a=>({...a}))
   };
   const eid=document.getElementById('editEid').value;
+  let savedEmployee=null;
+  let registerResult=null;
+  let isNew=false;
   if(eid){
     const i=S.employees.findIndex(e=>e.id===eid);
     if(i>-1){
       S.employees[i]=normalizeEmployeeRecord({...S.employees[i],...data});
-      toast('Dossier RH mis à jour','ok');
+      savedEmployee=S.employees[i];
+      registerResult=syncEmployeeRegister(savedEmployee,true);
     }
   } else {
-    S.employees.push(normalizeEmployeeRecord({id:'e'+Date.now(),documents:[],...data}));
-    toast('Dossier RH créé','ok');
-    setTimeout(()=>toast('Pensez à inscrire '+name+' au Registre du Personnel (obligation légale)','warn'),600);
+    savedEmployee=normalizeEmployeeRecord({id:'e'+Date.now(),documents:[],archived:false,...data});
+    S.employees.push(savedEmployee);
+    registerResult=syncEmployeeRegister(savedEmployee,true);
+    isNew=true;
   }
   const persisted=save();
   cm('ovl-emp');
   renderAll();
+  if(registerResult&&registerResult.status==='created'){
+    toast(`${isNew?'Dossier RH créé':'Dossier RH mis à jour'} · inscription n°${registerResult.entry.num} ajoutée au registre`,'ok');
+  } else if(registerResult&&registerResult.status==='updated'){
+    toast(`${isNew?'Dossier RH créé':'Dossier RH'} et registre synchronisés`,'ok');
+  } else if(registerResult&&registerResult.status==='excluded'){
+    toast(registerResult.entry
+      ? 'Dossier RH mis à jour · l’ancienne inscription au registre est conservée et doit être vérifiée'
+      : `${isNew?'Fiche du gérant créée · visible dans le planning':'Dossier du gérant mis à jour'} · hors registre des salariés`,'info');
+  } else {
+    toast(isNew?'Dossier RH créé':'Dossier RH mis à jour','ok');
+  }
   if(!persisted) toast('Le navigateur bloque la sauvegarde locale : vérifiez ses réglages','err');
 }
 
@@ -3239,161 +3829,44 @@ function renderEmployeeAmendments() {
   }).join('');
 }
 
-const HR_DOC_DB='plannipro-local';
-const HR_DOC_STORE='hrDocuments';
-const HR_DOC_MAX_BYTES=12*1024*1024;
-
-function openHRDocDB() {
-  return new Promise((resolve,reject)=>{
-    if(!window.indexedDB){reject(new Error('IndexedDB indisponible'));return;}
-    const request=indexedDB.open(HR_DOC_DB,1);
-    request.onupgradeneeded=()=>{
-      const db=request.result;
-      if(!db.objectStoreNames.contains(HR_DOC_STORE)) db.createObjectStore(HR_DOC_STORE,{keyPath:'id'});
-    };
-    request.onsuccess=()=>resolve(request.result);
-    request.onerror=()=>reject(request.error||new Error('Ouverture du stockage impossible'));
-  });
-}
-
-async function putHRDocument(record) {
-  const db=await openHRDocDB();
-  return new Promise((resolve,reject)=>{
-    const tx=db.transaction(HR_DOC_STORE,'readwrite');
-    tx.objectStore(HR_DOC_STORE).put(record);
-    tx.oncomplete=()=>{db.close();resolve();};
-    tx.onerror=()=>{const err=tx.error;db.close();reject(err);};
-    tx.onabort=()=>{const err=tx.error;db.close();reject(err);};
-  });
-}
-
-async function getHRDocument(id) {
-  const db=await openHRDocDB();
-  return new Promise((resolve,reject)=>{
-    const tx=db.transaction(HR_DOC_STORE,'readonly');
-    const request=tx.objectStore(HR_DOC_STORE).get(id);
-    request.onsuccess=()=>resolve(request.result||null);
-    request.onerror=()=>reject(request.error);
-    tx.oncomplete=()=>db.close();
-  });
-}
-
-async function deleteHRDocumentBlob(id) {
-  const db=await openHRDocDB();
-  return new Promise((resolve,reject)=>{
-    const tx=db.transaction(HR_DOC_STORE,'readwrite');
-    tx.objectStore(HR_DOC_STORE).delete(id);
-    tx.oncomplete=()=>{db.close();resolve();};
-    tx.onerror=()=>{const err=tx.error;db.close();reject(err);};
-  });
-}
-
-function formatFileSize(bytes) {
-  const value=Number(bytes)||0;
-  if(value<1024) return value+' o';
-  if(value<1024*1024) return (value/1024).toFixed(1)+' Ko';
-  return (value/(1024*1024)).toFixed(1)+' Mo';
+// Les anciens blobs IndexedDB ne sont ni lus, ni modifiés, ni supprimés. Le
+// coffre-fort Supabase est désormais l'unique chemin documentaire actif.
+function openEmployeeVault() {
+  const employeeId=document.getElementById('editEid')?.value||'';
+  if(!employeeId){toast('Enregistrez d’abord le dossier RH','warn');return;}
+  cm('ovl-emp');
+  window.PlanniProVault?.openForEmployee(employeeId);
 }
 
 async function addHRDocuments(event) {
-  const empId=document.getElementById('editEid').value;
-  const emp=S.employees.find(e=>e.id===empId);
-  const input=event&&event.target;
-  const files=Array.from(input&&input.files?input.files:[]);
-  if(!emp){toast('Enregistrez d’abord le dossier RH','warn');if(input)input.value='';return;}
-  if(!files.length) return;
-  const category=document.getElementById('eDocCat').value;
-  const expiry=document.getElementById('eDocExpiry').value;
-  let added=0, skipped=0;
-  let storageError=null;
-  for(const file of files){
-    if(file.size>HR_DOC_MAX_BYTES){skipped++;continue;}
-    try {
-      const id='doc'+Date.now()+Math.random().toString(36).slice(2,8);
-      const meta={id,name:file.name,type:file.type||'application/octet-stream',size:file.size,category,expiry,addedAt:new Date().toISOString()};
-      await putHRDocument({...meta,empId,blob:file,lastModified:file.lastModified||Date.now()});
-      if(!Array.isArray(emp.documents)) emp.documents=[];
-      emp.documents.push(meta);
-      added++;
-    } catch(err) {
-      storageError=err;
-      break;
-    }
-  }
-  if(added){
-    const persisted=save();
-    renderHRDocuments();
-    toast(added+' document'+(added>1?'s':'')+' enregistré'+(added>1?'s':'')+' localement','ok');
-    if(!persisted) toast('Les métadonnées du document n’ont pas pu être sauvegardées','err');
-  }
-  if(skipped) toast(skipped+' fichier'+(skipped>1?'s':'')+' ignoré'+(skipped>1?'s':'')+' (maximum 12 Mo)','warn');
-  if(storageError){
-    console.error('Stockage document RH',storageError);
-    toast('Impossible de stocker ce document dans le navigateur','err');
-  }
-  if(input) input.value='';
+  event?.preventDefault?.();
+  openEmployeeVault();
 }
 
 function renderHRDocuments() {
   const empId=document.getElementById('editEid')?.value||'';
-  const emp=S.employees.find(e=>e.id===empId);
-  const docs=emp&&Array.isArray(emp.documents)?emp.documents:[];
   const count=document.getElementById('empDocCount');
   const list=document.getElementById('empDocList');
-  if(count) count.textContent=docs.length;
+  if(count) count.textContent='';
   if(!list) return;
-  if(!docs.length){
-    list.innerHTML='<div class="hr-list-empty">Aucun document enregistré sur cet appareil.</div>';
-    return;
-  }
-  list.innerHTML=docs.slice().sort((a,b)=>String(b.addedAt).localeCompare(String(a.addedAt))).map(doc=>{
-    const expired=doc.expiry&&doc.expiry<today();
-    const expiry=doc.expiry?' · '+(expired?'expiré le ':'expire le ')+fmtDate(doc.expiry,{day:'2-digit',month:'short',year:'numeric'}):'';
-    const icon=(doc.type||'').includes('pdf')?'PDF':(doc.type||'').startsWith('image/')?'IMG':'DOC';
-    return '<div class="hr-item"><div class="hr-item-main"><div class="hr-item-title"><span class="hr-mini-chip">'+icon+'</span> '+escapeHTML(doc.name)+'</div><div class="hr-item-sub">'+escapeHTML(doc.category||'Autre')+' · '+formatFileSize(doc.size)+expiry+'</div><div class="hr-card-meta">Ajouté le '+new Date(doc.addedAt).toLocaleDateString('fr-FR')+' · stockage local navigateur</div></div><div style="display:flex;gap:5px"><button type="button" class="btn btn-outline btn-sm" onclick="downloadHRDocument(\''+doc.id+'\')">Télécharger</button><button type="button" class="ic-btn danger" onclick="deleteHRDocument(\''+doc.id+'\')" title="Supprimer">✕</button></div></div>';
-  }).join('');
+  list.innerHTML=empId?'<div class="hr-list-empty">Consultez les documents, versions et alertes depuis le coffre-fort RH sécurisé.</div>':'<div class="hr-list-empty">Enregistrez d’abord le dossier RH.</div>';
 }
 
 async function downloadHRDocument(id) {
-  try {
-    const record=await getHRDocument(id);
-    if(!record||!record.blob){toast('Le fichier local est introuvable sur cet appareil','err');return;}
-    const url=URL.createObjectURL(record.blob);
-    const link=document.createElement('a');
-    link.href=url;
-    link.download=record.name||'document';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),1000);
-  } catch(err) {
-    console.error('Lecture document RH',err);
-    toast('Impossible de lire ce document local','err');
-  }
+  void id;
+  openEmployeeVault();
 }
 
 async function deleteHRDocument(id) {
-  const empId=document.getElementById('editEid').value;
-  const emp=S.employees.find(e=>e.id===empId);
-  const doc=emp&&Array.isArray(emp.documents)?emp.documents.find(d=>d.id===id):null;
-  if(!emp||!doc||!confirm('Supprimer définitivement « '+doc.name+' » de cet appareil ?')) return;
-  try {
-    await deleteHRDocumentBlob(id);
-    emp.documents=emp.documents.filter(d=>d.id!==id);
-    save();
-    renderHRDocuments();
-    toast('Document supprimé de cet appareil','info');
-  } catch(err) {
-    console.error('Suppression document RH',err);
-    toast('Impossible de supprimer ce document local','err');
-  }
+  void id;
+  openEmployeeVault();
 }
 
 function archiveEmp(id) {
   const emp=S.employees.find(e=>e.id===id);
   if(!emp||!confirm(`Archiver ${emp.name} ? Il sera masqué du planning mais ses données seront conservées.`))return;
   emp.archived=true;emp.archivedAt=new Date().toISOString();
-  save();renderAll();toast(`${emp.name} archivé`,'info');
+  save();renderAll();toast(`${emp.name} archivé · son inscription au registre est conservée`,'info');
 }
 function restoreEmp(id) {
   const emp=S.employees.find(e=>e.id===id);
@@ -3401,20 +3874,34 @@ function restoreEmp(id) {
   emp.archived=false;emp.archivedAt=null;
   save();renderAll();toast(`${emp.name} réactivé`,'ok');
 }
-async function deleteEmp(id) {
+function removeEmployeeOperationalData(id) {
+  const removeFrom = key => {
+    const records = Array.isArray(S[key]) ? S[key] : [];
+    const initialCount = records.length;
+    S[key] = records.filter(record => record && record.empId !== id);
+    return initialCount - S[key].length;
+  };
+  return {
+    shifts: removeFrom('shifts'),
+    pointages: removeFrom('punchLog'),
+    absences: removeFrom('absences')
+  };
+}
+async function deleteEmp(id, source='equipe') {
   const emp=S.employees.find(e=>e.id===id);
-  if(!emp||!confirm(`SUPPRIMER définitivement ${emp.name} et tous ses shifts ? Cette action est irréversible.`))return;
-  const docs=Array.isArray(emp.documents)?emp.documents:[];
-  if(docs.length){
-    try {
-      await Promise.all(docs.map(doc=>deleteHRDocumentBlob(doc.id)));
-    } catch(err) {
-      console.warn('Nettoyage des documents RH locaux incomplet',err);
-    }
-  }
+  if(!emp)return false;
+  const fromPointage=source==='pointage';
+  const message=fromPointage
+    ? `SUPPRIMER le profil ${emp.name} du pointage ? Ses shifts, pointages et absences associés seront également supprimés. Le registre du personnel reste conservé.`
+    : `SUPPRIMER définitivement ${emp.name} et toutes ses données opérationnelles (shifts, pointages et absences) ? Cette action est irréversible. Son inscription au registre reste conservée.`;
+  if(!confirm(message))return false;
   S.employees=S.employees.filter(e=>e.id!==id);
-  S.shifts=S.shifts.filter(s=>s.empId!==id);
-  save();renderAll();toast('Employé supprimé','info');
+  const removed=removeEmployeeOperationalData(id);
+  save();renderAll();
+  const count=removed.shifts+removed.pointages+removed.absences;
+  const detail=count ? ` · ${count} donnée${count>1?'s':''} opérationnelle${count>1?'s':''} retirée${count>1?'s':''}` : '';
+  toast((fromPointage?'Profil supprimé':'Employé supprimé')+detail+' · son éventuelle inscription au registre est conservée','info');
+  return true;
 }
 
 /* ─── ABSENCE MODAL ─── */
@@ -3457,9 +3944,27 @@ function openRegModal(id) {
   document.getElementById('rObs').value=r?r.obs||'':'';
   const lnk=document.getElementById('rEmpLink');
   lnk.innerHTML='<option value="">Optionnel</option>';
-  S.employees.forEach(e=>{lnk.innerHTML+=`<option value="${e.id}"${r&&r.empId===e.id?' selected':''}>${e.name}</option>`;});
+  S.employees.filter(e=>!isTNS(e)||(r&&r.empId===e.id)).forEach(e=>{lnk.innerHTML+=`<option value="${e.id}"${r&&r.empId===e.id?' selected':''}>${e.name}</option>`;});
+  if(r&&r.empId&&!S.employees.some(e=>e.id===r.empId)) lnk.innerHTML+=`<option value="${r.empId}" selected>Dossier RH supprimé — inscription conservée</option>`;
   om('ovl-reg');
 }
+
+function prefillRegisterFromEmployee(empId) {
+  if(!empId) return;
+  const emp=S.employees.find(e=>e.id===empId);
+  if(!emp||isTNS(emp)) return;
+  const data=employeeRegisterData(emp);
+  document.getElementById('rNom').value=data.nom;
+  document.getElementById('rPrenom').value=data.prenom;
+  document.getElementById('rNat').value=data.nat||'Française';
+  document.getElementById('rDob').value=data.dob;
+  document.getElementById('rSexe').value=data.sexe;
+  document.getElementById('rPoste').value=data.poste;
+  document.getElementById('rCt').value=data.contrat;
+  document.getElementById('rEntree').value=data.entree||today();
+  document.getElementById('rNss').value=data.nss;
+}
+
 function saveReg() {
   const nom=document.getElementById('rNom').value.trim();
   const prenom=document.getElementById('rPrenom').value.trim();
@@ -3468,13 +3973,26 @@ function saveReg() {
   if(!nom||!prenom||!poste||!entree){toast('Nom, prénom, poste et date d\'entrée requis','err');return;}
   if(!S.registre)S.registre=[];
   const eid=document.getElementById('editRid').value;
-  const data={nom,prenom,nat:document.getElementById('rNat').value,dob:document.getElementById('rDob').value,sexe:document.getElementById('rSexe').value,poste,contrat:normalizeContract(document.getElementById('rCt').value),entree,sortie:document.getElementById('rSortie').value,motif:document.getElementById('rMotif').value,empId:document.getElementById('rEmpLink').value,nss:document.getElementById('rNss').value,obs:document.getElementById('rObs').value};
+  const empId=document.getElementById('rEmpLink').value;
+  const linkedEmp=empId?S.employees.find(e=>e.id===empId):null;
+  if(linkedEmp&&isTNS(linkedEmp)){toast('Le profil Gérant / TNS est exclu du registre automatique','err');return;}
+  const duplicateLink=empId&&S.registre.find(r=>r.id!==eid&&r.empId===empId);
+  if(duplicateLink){toast('Ce collaborateur possède déjà une inscription au registre','err');return;}
+  const duplicateIdentity=S.registre.find(r=>r.id!==eid&&comparableRegisterValue(r.nom+' '+r.prenom)===comparableRegisterValue(nom+' '+prenom)&&r.entree===entree);
+  if(duplicateIdentity){toast('Une inscription identique existe déjà pour cette date d’entrée','err');return;}
+  const data={nom,prenom,nat:document.getElementById('rNat').value,dob:document.getElementById('rDob').value,sexe:document.getElementById('rSexe').value,poste,contrat:normalizeContract(document.getElementById('rCt').value),entree,sortie:document.getElementById('rSortie').value,motif:document.getElementById('rMotif').value,empId,nss:document.getElementById('rNss').value,obs:document.getElementById('rObs').value,autoManaged:!!empId,lastSyncedAt:empId?new Date().toISOString():null};
   if(eid){const i=S.registre.findIndex(r=>r.id===eid);if(i>-1){S.registre[i]={...S.registre[i],...data};toast('Entrée modifiée','ok');}}
-  else{const num=String((S.registre.length+1)).padStart(4,'0');S.registre.push({id:'r'+Date.now(),num,...data});toast('Inscrit au registre','ok');}
+  else{S.registre.push({id:'r'+Date.now(),num:nextRegisterNumber(),...data});toast('Inscrit au registre','ok');}
   save();cm('ovl-reg');renderRegistre();
 }
 function deleteReg(id) {
-  if(!confirm('Supprimer cette entrée du registre ?'))return;
+  const entry=S.registre.find(r=>r.id===id);
+  if(!entry)return;
+  if(entry.empId){
+    toast('Une inscription liée à un dossier RH ne peut pas être supprimée. Renseignez plutôt sa date de sortie.','warn');
+    return;
+  }
+  if(!confirm('Supprimer cette entrée manuelle du registre ?'))return;
   S.registre=S.registre.filter(r=>r.id!==id);
   save();renderRegistre();toast('Entrée supprimée','info');
 }
@@ -3539,6 +4057,12 @@ function saveSite() {
 function deleteSite(id){if(!confirm('Supprimer ce site ?'))return;S.sites=S.sites.filter(s=>s.id!==id);save();renderSettings();toast('Site supprimé','info');}
 
 /* ─── POINTAGE ─── */
+function openTimeClockApp() {
+  const url = new URL('./pointeuse.html', window.location.href).href;
+  const opened = window.open(url, '_blank', 'noopener');
+  if (!opened) window.location.assign(url);
+}
+
 function doPunch(type) {
   const empId=document.getElementById('punchSel').value;
   if(!empId){toast('Sélectionnez un employé','err');return;}
@@ -3590,7 +4114,7 @@ function download(content,name,type){const a=document.createElement('a');a.href=
 
 
 /* ═══════════════════════════════════════════════════════
-   EXPORT PDF — Style Skello
+   EXPORT PDF — PLANNIPRO
 ═══════════════════════════════════════════════════════ */
 function exportPDF() {
   try {
@@ -3854,7 +4378,7 @@ function buildPrintTable() {
   });
 
   // ── Store name ──
-  var storeName = (S.sites && S.sites.length > 0) ? S.sites[0].name : 'SARL KayCo';
+  var storeName = (S.sites && S.sites.length > 0) ? S.sites[0].name : 'Établissement';
   var weekLbl2 = wkLbl();
   var printDate = 'Imprimé le ' + new Date().toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'});
   var semNum = getWeekNumber(new Date(days[0] + 'T12:00:00'));
@@ -4168,11 +4692,13 @@ function renderDayView() {
       bar.draggable = true;
 
       const stype2=sh.shiftType||'work';
-      const bgCol2=stype2==='aar'?'#059669':stype2==='task'?(sh.taskPrio==='urgente'?'#DC2626':sh.taskPrio==='haute'?'#D97706':'#0284C7'):c;
+      const isDayAbs=stype2==='aar'||stype2==='abs';
+      const isWeeklyRest=isDayAbs&&sh.aarType==='Repos hebdomadaire';
+      const bgCol2=isWeeklyRest?'#64748B':isDayAbs?'#059669':stype2==='task'?(sh.taskPrio==='urgente'?'#DC2626':sh.taskPrio==='haute'?'#D97706':'#0284C7'):c;
       bar.style.background=bgCol2;
       bar.className='dg-shift type-'+stype2+(sh.taskPrio?' prio-'+sh.taskPrio:'');
       let topLine='', midLine='', botLine='';
-      if(stype2==='aar')      { topLine=sh.aarType||'Absence auth. rém.'; midLine=''; botLine=shHrs.toFixed(1)+'h rémunérées'; }
+      if(isDayAbs)            { topLine=sh.aarType||'Absence'; midLine=sh.note||''; botLine=isWeeklyRest?'Repos · 0h':(UNPAID_ABS.has(sh.aarType)?'Non rémunérée':shHrs.toFixed(1)+'h rémunérées'); }
       else if(stype2==='task'){ topLine=(sh.taskCat||'Tâche'); midLine=sh.s+'–'+sh.e; botLine=shHrs.toFixed(1)+'h'; }
       else if(stype2==='double'){ topLine=sh.s+'–'+sh.e; midLine=sh.s2&&sh.e2?sh.s2+'–'+sh.e2:''; botLine=shHrs.toFixed(1)+'h total'; }
       else                    { topLine=sh.s+'–'+sh.e; midLine=sh.note||emp.role||''; botLine=shHrs.toFixed(1)+'h'+(cost?' · '+cost.toFixed(0)+'€':'');; const pl=pauseLabel(sh); if(pl) botLine+=' (⏸'+pl+')'; }
@@ -4188,14 +4714,15 @@ function renderDayView() {
         e.stopPropagation();
         openShiftModal(emp.id, d, sh.id);
       });
+      bar.addEventListener('contextmenu',e=>openShiftContextMenu(e,sh.id));
 
       // Drag start
       bar.addEventListener('dragstart', e => {
-        e.dataTransfer.setData('shiftId', sh.id);
+        const drag=beginPlanningDrag(e,sh.id,emp.id,d);
+        if(!drag){e.preventDefault();return;}
         e.dataTransfer.setData('empId', emp.id);
         e.dataTransfer.setData('origX', x);
         e.dataTransfer.setData('origW', w);
-        e.dataTransfer.effectAllowed = 'move';
         bar.classList.add('dragging');
 
         // Ghost image
@@ -4209,6 +4736,7 @@ function renderDayView() {
       bar.addEventListener('dragend', () => {
         bar.classList.remove('dragging');
         document.getElementById('dgGhost').style.display='none';
+        endPlanningDrag();
       });
 
       // Pause slot overlay (créneau type)
@@ -4232,7 +4760,7 @@ function renderDayView() {
     // Row dragover/drop for moving within day
     row.addEventListener('dragover', e => {
       e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
+      e.dataTransfer.dropEffect = planningDropMode(e,readPlanningDrag(e));
       const rect = row.getBoundingClientRect();
       const relX = e.clientX - rect.left;
       const origW = parseFloat(e.dataTransfer.getData('origW')) || 0;
@@ -4249,7 +4777,8 @@ function renderDayView() {
     row.addEventListener('drop', e => {
       e.preventDefault();
       row.classList.remove('drag-over');
-      const shiftId = e.dataTransfer.getData('shiftId');
+      const drag=readPlanningDrag(e);
+      const shiftId = drag?.shiftId;
       const sh2 = S.shifts.find(s=>s.id===shiftId);
       if (!sh2) return;
 
@@ -4264,15 +4793,13 @@ function renderDayView() {
       const endMM  = Math.round((Math.min(DAY_END, endH) - endHH) * 60);
       const newEnd = String(endHH).padStart(2,'0') + ':' + String(endMM).padStart(2,'0');
 
-      // Move to new emp if different row
-      sh2.empId = emp.id;
-      sh2.date  = d;
-      sh2.s     = newStart;
-      sh2.e     = newEnd;
-      save();
+      const mode=planningDropMode(e,drag);
+      const transferred=transferPlanningShift(sh2.id,emp.id,d,mode,{s:newStart,e:newEnd});
+      if(!transferred) return;
       renderDayView();
-      toast('Shift déplacé', 'ok');
+      toast(mode==='copy'?'Shift copié':'Shift déplacé', 'ok');
     });
+    row.addEventListener('contextmenu',e=>openCellContextMenu(e,emp.id,d));
 
     inner.appendChild(row);
   });
@@ -4284,17 +4811,175 @@ function renderDayView() {
 let wkDragShiftId = null;
 let wkDragEmpId   = null;
 let wkDragDate    = null;
+let planningDragMode = 'move';
+let planningClipboard = null;
+let planningDragState = null;
+
+function beginPlanningDrag(event, shiftId, empId, date) {
+  if (!shiftId || !event.dataTransfer) return null;
+  const mode = planningDragMode==='copy'||event.ctrlKey||event.metaKey ? 'copy' : 'move';
+  const payload = {shiftId, empId, date, mode};
+  planningDragState = payload;
+  event.dataTransfer.effectAllowed = 'copyMove';
+  // text/plain is needed by browsers that ignore custom drag MIME types.
+  event.dataTransfer.setData('text/plain', shiftId);
+  event.dataTransfer.setData('shiftId', shiftId);
+  event.dataTransfer.setData('application/x-plannipro-shift', JSON.stringify(payload));
+  return payload;
+}
+
+function readPlanningDrag(event) {
+  try {
+    const raw = event.dataTransfer?.getData('application/x-plannipro-shift');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.shiftId) return parsed;
+    }
+  } catch (_) {}
+  const shiftId = event.dataTransfer?.getData('shiftId') || event.dataTransfer?.getData('text/plain');
+  if (shiftId) return {...(planningDragState||{}), shiftId};
+  return planningDragState;
+}
+
+function planningDropMode(event, payload=planningDragState) {
+  return planningDragMode==='copy'||payload?.mode==='copy'||event.ctrlKey||event.metaKey ? 'copy' : 'move';
+}
+
+function endPlanningDrag() {
+  // `drop` is delivered before `dragend`; wait one tick before clearing state.
+  setTimeout(()=>{ planningDragState=null; wkDragShiftId=null; wkDragEmpId=null; wkDragDate=null; },0);
+}
+
+function setPlanningDragMode(mode) {
+  planningDragMode=mode==='copy'?'copy':'move';
+  const moveBtn=document.getElementById('dragModeMove');
+  const copyBtn=document.getElementById('dragModeCopy');
+  if(moveBtn) moveBtn.classList.toggle('act',planningDragMode==='move');
+  if(copyBtn) copyBtn.classList.toggle('act',planningDragMode==='copy');
+  toast(planningDragMode==='copy'?'Glisser-déposer : mode Copier':'Glisser-déposer : mode Déplacer','info');
+}
+
+function clonePlanningShift(shift,empId,date,overrides={}) {
+  return {
+    ...shift,
+    ...overrides,
+    id:'s'+Date.now()+Math.random().toString(36).slice(2,6),
+    copiedFrom:shift.id,
+    empId,
+    date
+  };
+}
+
+function transferPlanningShift(shiftId,empId,date,mode='move',overrides={}) {
+  const shift=S.shifts.find(item=>item.id===shiftId);
+  if(!shift||!empId||!date) return null;
+  if(typeof isDayLocked==='function'&&isDayLocked(date)){
+    toast('La journée de destination est verrouillée','err');
+    return null;
+  }
+  if(mode!=='copy'&&typeof isDayLocked==='function'&&isDayLocked(shift.date)){
+    toast('La journée d’origine est verrouillée','err');
+    return null;
+  }
+  if(typeof snapshot==='function') snapshot(mode==='copy'?'Copie shift':'Déplacement shift');
+  if(mode==='copy'){
+    const copied=clonePlanningShift(shift,empId,date,overrides);
+    S.shifts.push(copied);
+    save();
+    return copied;
+  }
+  Object.assign(shift,overrides,{empId,date});
+  save();
+  return shift;
+}
+
+function setPlanningClipboard(shiftId,mode) {
+  const shift=S.shifts.find(item=>item.id===shiftId);
+  if(!shift) return;
+  planningClipboard={mode:mode==='cut'?'cut':'copy',shiftId:shift.id};
+  toast(mode==='cut'?'Shift coupé · choisissez une case puis Coller':'Shift copié · choisissez une case puis Coller','ok');
+}
+
+function pastePlanningClipboard(empId,date) {
+  if(!planningClipboard){toast('Aucun shift à coller','warn');return null;}
+  const mode=planningClipboard.mode==='cut'?'move':'copy';
+  const result=transferPlanningShift(planningClipboard.shiftId,empId,date,mode);
+  if(!result){
+    if(!S.shifts.some(item=>item.id===planningClipboard.shiftId)){
+      planningClipboard=null;
+      toast('Le shift d’origine n’existe plus','err');
+    }
+    return null;
+  }
+  if(mode==='move') planningClipboard=null;
+  if(planViewMode==='day') renderDayView();
+  else renderPlanning();
+  toast(mode==='copy'?'Shift collé':'Shift déplacé','ok');
+  return result;
+}
+
+function getPlanningContextMenu() {
+  let menu=document.getElementById('planningContextMenu');
+  if(menu) return menu;
+  menu=document.createElement('div');
+  menu.id='planningContextMenu';
+  menu.className='planning-context-menu';
+  document.body.appendChild(menu);
+  return menu;
+}
+
+function positionPlanningContextMenu(menu,event) {
+  const maxX=window.innerWidth-190;
+  const maxY=window.innerHeight-180;
+  menu.style.left=Math.max(8,Math.min(event.clientX,maxX))+'px';
+  menu.style.top=Math.max(8,Math.min(event.clientY,maxY))+'px';
+  menu.classList.add('open');
+}
+
+function closePlanningContextMenu() {
+  const menu=document.getElementById('planningContextMenu');
+  if(menu) menu.classList.remove('open');
+}
+
+function openShiftContextMenu(event,shiftId) {
+  event.preventDefault();
+  event.stopPropagation();
+  const menu=getPlanningContextMenu();
+  menu.innerHTML=`<button onclick="setPlanningClipboard('${shiftId}','copy');closePlanningContextMenu()">📄 Copier le shift</button><button onclick="setPlanningClipboard('${shiftId}','cut');closePlanningContextMenu()">✂️ Couper le shift</button><button class="danger" onclick="deleteShift('${shiftId}');closePlanningContextMenu()">✕ Supprimer</button>`;
+  positionPlanningContextMenu(menu,event);
+}
+
+function openCellContextMenu(event,empId,date) {
+  event.preventDefault();
+  event.stopPropagation();
+  const menu=getPlanningContextMenu();
+  menu.innerHTML=`<button ${planningClipboard?'':'disabled'} onclick="pastePlanningClipboard('${empId}','${date}');closePlanningContextMenu()">📋 Coller ici</button><button onclick="openShiftModal('${empId}','${date}');closePlanningContextMenu()">＋ Nouveau shift</button><button onclick="openWeeklyRestModal('${empId}','${date}');closePlanningContextMenu()">☕ Repos hebdomadaire</button>`;
+  positionPlanningContextMenu(menu,event);
+}
+
+function openWeeklyRestModal(empId,date) {
+  openShiftModal(empId,date);
+  setSKTab('rest',null);
+  document.getElementById('shiftMT').textContent='Ajouter un repos hebdomadaire';
+  updatePrev();
+}
+
+document.addEventListener('click',closePlanningContextMenu);
+document.addEventListener('scroll',closePlanningContextMenu,true);
 
 function initWeekDragDrop() {
   // Attach to all shift blocks in week view
-  document.querySelectorAll('.sh-blk').forEach(bar => {
+  document.querySelectorAll('.sh-blk,.sh-stack').forEach(bar => {
     bar.setAttribute('draggable','true');
+    bar.title=(bar.title?bar.title+' · ':'')+'Glisser pour '+(planningDragMode==='copy'?'copier':'déplacer')+' · clic droit pour copier/couper';
+    bar.addEventListener('contextmenu',e=>openShiftContextMenu(e,bar.dataset.shiftId));
 
     bar.addEventListener('dragstart', e => {
       wkDragShiftId = bar.dataset.shiftId;
       wkDragEmpId   = bar.dataset.empId;
       wkDragDate    = bar.dataset.date;
-      e.dataTransfer.effectAllowed = 'move';
+      const drag=beginPlanningDrag(e,wkDragShiftId,wkDragEmpId,wkDragDate);
+      if(!drag){e.preventDefault();return;}
       bar.classList.add('dragging-wk');
 
       const sh = S.shifts.find(s=>s.id===wkDragShiftId);
@@ -4312,6 +4997,7 @@ function initWeekDragDrop() {
     bar.addEventListener('dragend', () => {
       bar.classList.remove('dragging-wk');
       document.querySelectorAll('.gr-cell').forEach(c=>c.classList.remove('drag-target'));
+      endPlanningDrag();
     });
   });
 
@@ -4319,7 +5005,7 @@ function initWeekDragDrop() {
   document.querySelectorAll('.gr-cell').forEach(cell => {
     cell.addEventListener('dragover', e => {
       e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
+      e.dataTransfer.dropEffect = planningDropMode(e,readPlanningDrag(e));
       document.querySelectorAll('.gr-cell').forEach(c=>c.classList.remove('drag-target'));
       cell.classList.add('drag-target');
     });
@@ -4327,61 +5013,30 @@ function initWeekDragDrop() {
     cell.addEventListener('drop', e => {
       e.preventDefault();
       cell.classList.remove('drag-target');
-      if (!wkDragShiftId) return;
+      const drag=readPlanningDrag(e);
+      if (!drag?.shiftId) return;
       const newEmpId = cell.dataset.empId;
       const newDate  = cell.dataset.date;
       if (!newEmpId || !newDate) return;
 
-      // Check if Ctrl held → copy, else move
-      const sh = S.shifts.find(s=>s.id===wkDragShiftId);
+      const sh = S.shifts.find(s=>s.id===drag.shiftId);
       if (!sh) return;
-
-      if (e.ctrlKey || e.metaKey) {
-        // Copy shift
-        S.shifts.push({id:'s'+Date.now(), empId:newEmpId, date:newDate, s:sh.s, e:sh.e, note:sh.note||''});
-        toast('Shift copié (Ctrl+glisser)', 'ok');
-      } else {
-        // Move shift
-        sh.empId = newEmpId;
-        sh.date  = newDate;
-        toast('Shift déplacé', 'ok');
-      }
-      wkDragShiftId = null;
-      save();
+      const mode=planningDropMode(e,drag);
+      const transferred=transferPlanningShift(sh.id,newEmpId,newDate,mode);
+      if(!transferred) return;
+      toast(mode==='copy'?'Shift copié':'Shift déplacé','ok');
       renderPlanning();
     });
+    cell.addEventListener('contextmenu',e=>openCellContextMenu(e,cell.dataset.empId,cell.dataset.date));
   });
 }
 
 /* ═══════════════════════════════════════════════════════
-   PATCH renderPlanning to add drag data attributes
-   and call initWeekDragDrop after render
+   Attach week drag & drop after each grid render
 ═══════════════════════════════════════════════════════ */
 const _origRenderPlanning = renderPlanning;
 renderPlanning = function() {
   _origRenderPlanning();
-  // Add data attributes to shift blocks for drag & drop
-  document.querySelectorAll('.sh-blk').forEach(bar => {
-    // Find shift id from onclick
-    const onclickStr = bar.getAttribute('onclick')||'';
-    // Parse from the delete button onclick
-    const delBtn = bar.querySelector('.sh-del');
-    if (delBtn) {
-      const m = delBtn.getAttribute('onclick').match(/deleteShift\('([^']+)'\)/);
-      if (m) {
-        bar.dataset.shiftId = m[1];
-        const sh = S.shifts.find(s=>s.id===m[1]);
-        if (sh) { bar.dataset.empId = sh.empId; bar.dataset.date = sh.date; }
-      }
-    }
-  });
-  // Add data to cells
-  document.querySelectorAll('.gr-cell').forEach(cell => {
-    const onclick = cell.getAttribute('onclick')||'';
-    // Extract empId and date from onclick="openShiftModal('empId','date')"
-    const m = onclick.match(/openShiftModal\('([^']*)','([^']*)'\)/);
-    if (m) { cell.dataset.empId = m[1]; cell.dataset.date = m[2]; }
-  });
   initWeekDragDrop();
   // Show stats strip in week mode
   if (planViewMode === 'week') {
@@ -4486,7 +5141,7 @@ function renderMonthView() {
     .replace(/^\w/, c => c.toUpperCase());
 
 
-  // Build full cross-grid (Skello style): emp rows x day columns
+  // Build full cross-grid: employee rows × day columns
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const MDAY_W = 68, EMP_W = 148, ROW_H = 72, HDR_H = 52;
   const DAYS_SHORT = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
@@ -4904,6 +5559,7 @@ function executeDup() {
     if (dayIdx < 0 || dayIdx >= tgtDays.length) return;
     S.shifts.push({
       id: 's' + Date.now() + Math.random().toString(36).slice(2,6),
+      copiedFrom: sh.id,
       empId: sh.empId,
       date: tgtDays[dayIdx],
       s: sh.s,
@@ -5497,12 +6153,30 @@ function parseImportCSV(text) {
     const row = {};
     headers.forEach((h,idx) => row[h] = vals[idx]||'');
     // Flexible mapping
-    const name = row['nom']||row['name']||row['prénom']||row['prenom']||'';
+    const rawName=row['nom complet']||row['name']||row['collaborateur']||'';
+    let firstName=row['prénom']||row['prenom']||'';
+    let lastName=row['nom']||'';
+    if(!firstName&&lastName.includes(' ')){
+      const parsed=splitEmployeeName(lastName);
+      firstName=parsed.firstName;
+      lastName=parsed.lastName;
+    }
+    if((!firstName||!lastName)&&rawName){
+      const parsed=splitEmployeeName(rawName);
+      if(!firstName)firstName=parsed.firstName;
+      if(!lastName)lastName=parsed.lastName;
+    }
+    const name=employeeDisplayName(firstName,lastName)||rawName;
     const role = row['poste']||row['fonction']||row['role']||'';
     const rate = parseFloat(row['taux']||row['taux horaire']||row['salaire']||0)||0;
     const maxH = parseFloat(row['heures']||row['contrat']||row['h/sem']||35)||35;
     const contract = row['type contrat']||row['contrat type']||'CDI';
-    if (name) _importRows.push({name,role,rate,maxH,contract});
+    const startDate=row["date d'entrée"]||row['date entree']||row['entrée']||row['entree']||'';
+    const dob=row['date de naissance']||row['naissance']||row['dob']||'';
+    const nationality=row['nationalité']||row['nationalite']||'Française';
+    const gender=row['sexe']||row['genre']||'';
+    const nss=row['nss']||row['sécurité sociale']||row['securite sociale']||'';
+    if (name) _importRows.push({name,firstName,lastName,role,rate,maxH,contract,startDate,dob,nationality,gender,nss});
   }
 
   const prev = document.getElementById('importPreview');
@@ -5525,17 +6199,25 @@ function parseImportCSV(text) {
 
 function confirmImport() {
   if (!_importRows.length) return;
-  let added=0;
+  let added=0,registered=0,incomplete=0;
   _importRows.forEach(r=>{
-    if (!S.employees.find(e=>e.name.toLowerCase()===r.name.toLowerCase())) {
-      S.employees.push({id:'e'+Date.now()+Math.random().toString(36).slice(2,5),
+    if (!S.employees.find(e=>comparableRegisterValue(e.name)===comparableRegisterValue(r.name))) {
+      const emp=normalizeEmployeeRecord({id:'e'+Date.now()+Math.random().toString(36).slice(2,5),
         name:r.name,role:r.role,rate:r.rate||null,maxH:r.maxH,contract:r.contract,
-        phone:'',email:'',site:'',note:'',cpSolde:25});
+        phone:'',email:'',site:'',note:'',cpSolde:25,
+        identity:{firstName:r.firstName,lastName:r.lastName,dob:r.dob,nationality:r.nationality,gender:r.gender,nss:r.nss},
+        contractDetails:{startDate:r.startDate}});
+      S.employees.push(emp);
+      const result=syncEmployeeRegister(emp,true);
+      if(result.status==='created')registered++;
+      else if(result.status==='incomplete')incomplete++;
       added++;
     }
   });
   save(); cm('ovl-import'); renderAll();
   toast(added+' employé(s) importé(s) ✓', 'ok');
+  if(registered) toast(registered+' inscription(s) ajoutée(s) automatiquement au registre','ok');
+  if(incomplete) toast(incomplete+' dossier(s) à compléter avant inscription au registre','warn');
   if (added < _importRows.length) toast((+_importRows.length-added)+' ignoré(s) — déjà existants', 'warn');
 }
 
@@ -5886,11 +6568,17 @@ let onboardingStep = 0;
 const ONBOARDING_KEY = 'ppv3_onboarding_done';
 
 function onboardingSeen() {
-  try { return localStorage.getItem(ONBOARDING_KEY) === '1'; } catch (e) { return false; }
+  return !!(S.meta && S.meta.onboardingSeen) ||
+    storageGet('localStorage', ONBOARDING_KEY) === '1' ||
+    storageGet('sessionStorage', ONBOARDING_KEY) === '1';
 }
 
 function markOnboardingSeen() {
-  try { localStorage.setItem(ONBOARDING_KEY, '1'); } catch (e) { /* storage is optional */ }
+  if (!S.meta || typeof S.meta !== 'object') S.meta = {};
+  S.meta.onboardingSeen = true;
+  storageSet('localStorage', ONBOARDING_KEY, '1');
+  storageSet('sessionStorage', ONBOARDING_KEY, '1');
+  save();
 }
 
 function renderOnboarding() {
@@ -5930,7 +6618,7 @@ function maybeShowOnboarding() {
   if (!onboardingSeen()) setTimeout(() => openOnboarding(false), 280);
 }
 
-// A failed localStorage write must never make a planning action fail.
+// A failed storage write must never make a planning action fail.
 const _ppvSaveWithDefaults = save;
 save = function() {
   try { return _ppvSaveWithDefaults(); }
@@ -6036,31 +6724,22 @@ renderAll = function() {
 };
 
 /* ═══ INIT ═══ */
-(function(){
-  load();
-  if(!S.employees.length){
-    S.employees=[
-      {id:'e1',name:'Marie Koné',    role:'Caissière',       rate:12.00,maxH:35,contract:'CDI',phone:'06 12 34 56 78',email:'marie.kone@mail.fr',site:'s1'},
-      {id:'e2',name:'Oumar Diallo',  role:'Mise en rayon',   rate:11.88,maxH:35,contract:'CDI',phone:'06 23 45 67 89',email:'oumar.diallo@mail.fr',site:'s1'},
-      {id:'e3',name:'Fatou Traoré',  role:'Responsable adj.',rate:15.50,maxH:40,contract:'CDI',phone:'06 34 56 78 90',email:'fatou.traore@mail.fr',site:'s1'},
-      {id:'e4',name:'Ibrahima Bah',  role:'Caissier',        rate:11.88,maxH:35,contract:'CDI',phone:'06 45 67 89 01',email:'ibrahima.bah@mail.fr',site:'s1'},
-      {id:'e5',name:'Aicha Sow',     role:'Boulangerie',     rate:12.50,maxH:30,contract:'CDI',phone:'06 56 78 90 12',email:'aicha.sow@mail.fr',site:'s1'},
-    ];
-    const days=wkDays();
-    const seeds=[
-      {e:'e1',d:0,s:'07:00',f:'15:00'},{e:'e1',d:2,s:'12:00',f:'20:00'},{e:'e1',d:4,s:'07:00',f:'15:00'},{e:'e1',d:5,s:'08:00',f:'14:00'},
-      {e:'e2',d:0,s:'10:00',f:'18:00'},{e:'e2',d:1,s:'07:00',f:'13:00'},{e:'e2',d:3,s:'10:00',f:'18:00'},{e:'e2',d:5,s:'12:00',f:'20:00'},{e:'e2',d:6,s:'09:00',f:'17:00'},
-      {e:'e3',d:0,s:'09:00',f:'18:00'},{e:'e3',d:1,s:'09:00',f:'18:00'},{e:'e3',d:2,s:'09:00',f:'18:00'},{e:'e3',d:3,s:'09:00',f:'18:00'},{e:'e3',d:4,s:'09:00',f:'18:00'},
-      {e:'e4',d:0,s:'13:00',f:'20:00'},{e:'e4',d:2,s:'07:00',f:'14:00'},{e:'e4',d:4,s:'13:00',f:'20:00'},{e:'e4',d:5,s:'09:00',f:'17:00'},{e:'e4',d:6,s:'10:00',f:'18:00'},
-      {e:'e5',d:1,s:'06:00',f:'12:00'},{e:'e5',d:3,s:'06:00',f:'12:00'},{e:'e5',d:5,s:'06:00',f:'12:00'},
-    ];
-    S.shifts=seeds.filter(s=>s.d<days.length).map((s,i)=>({id:'sd'+i,empId:s.e,date:days[s.d],s:s.s,e:s.f,note:''}));
-    save();
-  }
+(async function(){
+  const restoredFrom = await restoreState();
+  if(!restoredFrom) save();
+  if(ensureEmployeeRegisterLinks()) save();
+  stateReady = true;
   goView('planning');
   syncSbTab();
   maybeShowOnboarding();
-})();
+})().catch(function(error){
+  console.error('PlanniPro : initialisation locale impossible', error);
+  normalizeState();
+  stateReady = true;
+  goView('planning');
+  syncSbTab();
+  maybeShowOnboarding();
+});
 
 
 
@@ -6103,5 +6782,9 @@ renderAll = function() {
 
 
 </script>
+<script src="./supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./plannipro-cloud.js"></script>
+<script src="./plannipro-vault.js"></script>
 </body>
 </html>

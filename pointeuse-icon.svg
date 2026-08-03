@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pointeuse PlanniPro">
+  <rect width="512" height="512" rx="112" fill="#101936"/>
+  <rect x="112" y="84" width="288" height="344" rx="42" fill="#5667e8"/>
+  <rect x="151" y="127" width="210" height="108" rx="18" fill="#eef1ff"/>
+  <circle cx="185" cy="306" r="20" fill="#fff"/><circle cx="256" cy="306" r="20" fill="#fff"/><circle cx="327" cy="306" r="20" fill="#fff"/>
+  <circle cx="185" cy="364" r="20" fill="#fff"/><circle cx="256" cy="364" r="20" fill="#fff"/><circle cx="327" cy="364" r="20" fill="#fff"/>
+  <path d="M202 181h108" stroke="#5667e8" stroke-width="22" stroke-linecap="round"/>
+</svg>

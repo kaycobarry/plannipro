@@ -1,0 +1,7 @@
+project_id = "pkviymixsxwtwrarqomi"
+
+[functions.invite-user]
+verify_jwt = false
+
+[functions.revoke-user-sessions]
+verify_jwt = false
