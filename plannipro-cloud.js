@@ -606,6 +606,10 @@
     const options = App.contexts.map((context) => `<option value="${escapeHtml(context.organization_id)}" ${context.organization_id === App.context.organization_id ? 'selected' : ''}>${escapeHtml(context.organization_name)} · ${escapeHtml(context.role_label)}</option>`).join('');
     const canOpenUsers = ['view', 'invite', 'disable', 'reactivate', 'delete', 'manage_roles', 'manage_permissions'].some((action) => App.can('users', action));
     root.innerHTML = `<button class="pp-account-button" type="button" data-pp-action="account-toggle" aria-label="Menu utilisateur"><span class="pp-account-avatar">${escapeHtml(initials)}</span><span class="pp-account-lines"><span class="pp-account-name">${escapeHtml(App.user.user_metadata?.full_name || App.user.email || 'Utilisateur')}</span><span class="pp-account-role">${escapeHtml(App.context.role_label)} · ${escapeHtml(App.context.organization_name)}</span></span></button><div class="pp-account-menu"><p><strong>${escapeHtml(App.context.role_label)}</strong> · ${escapeHtml(App.context.status)}</p>${App.contexts.length > 1 ? '<select data-pp-org-switch>' + options + '</select>' : ''}<p style="margin-top:9px"><span class="pp-sync-status" data-pp-sync-status>Synchronisé</span></p><div class="pp-account-actions"><button type="button" data-pp-action="sync-now">Synchroniser maintenant</button>${App.context.employee_id ? '<button type="button" data-pp-action="self-service">Mes coordonnées</button>' : ''}<button type="button" data-pp-action="change-password">Modifier le mot de passe</button>${canOpenUsers ? '<button type="button" data-pp-action="open-users">Utilisateurs et droits d’accès</button>' : ''}<button type="button" class="danger" data-pp-action="logout">Se déconnecter</button></div></div>`;
+    root.querySelector('[data-pp-action="logout"]')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      void logout();
+    });
     root.querySelector('[data-pp-org-switch]')?.addEventListener('change', async (event) => {
       const organizationId = event.target.value;
       const next = App.contexts.find((context) => context.organization_id === organizationId);
