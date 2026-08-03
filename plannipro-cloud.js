@@ -558,27 +558,39 @@
   }
 
   async function logout() {
+    const client = App.client;
+    const realtimeChannel = App.realtimeChannel;
+
+    // Clear the authenticated UI and in-memory identity immediately. Realtime
+    // teardown can wait for a socket timeout, but must never prevent logout.
+    clearTimeout(App.syncTimer);
+    App.syncTimer = null;
+    App.realtimeChannel = null;
+    App.session = null;
+    App.user = null;
+    App.context = null;
+    App.contexts = EMPTY_ARRAY;
+    App.cacheKey = null;
+    App.syncing = false;
+    App.applyingRemote = false;
+    App.remoteReady = false;
+    document.querySelector('.pp-account')?.remove();
+    authForm('login');
+
     try {
-      await window.PlanniProVault?.shutdown?.();
-      await App.client.auth.signOut({ scope: 'local' });
+      // Sign out before closing channels: a stalled Realtime socket must not
+      // leave the Supabase session active on this device.
+      await client.auth.signOut({ scope: 'local' });
     }
     finally {
-      clearTimeout(App.syncTimer);
-      App.syncTimer = null;
-      if (App.realtimeChannel) {
-        try { await App.client.removeChannel(App.realtimeChannel); } catch (_) { /* Session is already closed locally. */ }
-        App.realtimeChannel = null;
+      // Tear down all sockets in one operation before any feature-specific
+      // cleanup can wait on an already-disconnected channel.
+      try { await client.removeAllChannels(); } catch (_) {
+        if (realtimeChannel) {
+          try { await client.removeChannel(realtimeChannel); } catch (_) { /* Session is already closed locally. */ }
+        }
       }
-      App.session = null;
-      App.user = null;
-      App.context = null;
-      App.contexts = EMPTY_ARRAY;
-      App.cacheKey = null;
-      App.syncing = false;
-      App.applyingRemote = false;
-      App.remoteReady = false;
-      document.querySelector('.pp-account')?.remove();
-      authForm('login');
+      try { await window.PlanniProVault?.shutdown?.(); } catch (_) { /* Identity and Realtime are already cleared. */ }
     }
   }
 

@@ -431,11 +431,12 @@
     clearTimeout(state.refreshTimer);
     state.requestEpoch += 1;
     state.loading = false;
-    if (state.channel && client()) await client().removeChannel(state.channel);
+    const channel = state.channel;
     state.channel = null; state.ready = false; state.selected = null; state.employeeFilter = '';
     state.categories = []; state.employees = []; state.establishments = [];
     state.documents = []; state.alerts = []; state.versions = []; state.audit = [];
     state.previewUrls.forEach((url) => URL.revokeObjectURL(url)); state.previewUrls.clear();
+    if (channel && client()) await client().removeChannel(channel);
   }
 
   window.addEventListener('plannipro:cloud-ready', load);
