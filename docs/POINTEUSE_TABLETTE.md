@@ -1,96 +1,67 @@
 # Pointeuse tablette PlanniPro
 
-Cette extension ajoute une page distincte : `pointeuse.html`.
+La pointeuse est une page distincte, `pointeuse.html`. Une connexion normale à PlanniPro ne crée jamais de terminal.
 
-Elle est conçue pour une tablette installée dans le magasin : le salarié choisit son nom, saisit un code personnel de six chiffres, puis enregistre son entrée, sa pause, sa reprise ou sa sortie. La tablette n'affiche ni le planning complet, ni les dossiers RH, ni les rémunérations.
+## Installation Supabase
 
-## Avant de l'activer
+Appliquer dans cet ordre :
 
-La base sécurité de PlanniPro doit déjà être en place et testée : `supabase/schema.sql`, le premier gérant, l'organisation et l'établissement. Ne publiez pas cette extension tant que les scénarios RBAC/RLS déjà prévus ne sont pas validés.
+1. `supabase/schema.sql`
+2. `supabase/time-clock.sql`
+3. `supabase/rbac-advanced.sql`
+4. `supabase/time-clock-secure-activation.sql`
 
-## 1. Ajouter les tables et règles de la pointeuse
+La dernière migration est transactionnelle et idempotente. Elle ne supprime aucun pointage. Elle révoque les anciennes RPC permettant l’enregistrement direct et la définition manuelle d’un PIN avec vérificateur hors ligne.
 
-Dans Supabase, ouvrir **SQL Editor**, créer une nouvelle requête, ouvrir `supabase/time-clock.sql`, puis copier tout son contenu et cliquer sur **Run**.
+Pour l’envoi facultatif des liens de création de PIN, déployer `send-clock-pin-invitation` avec :
 
-Ce fichier est une migration complémentaire : il ne faut pas réexécuter ou supprimer `schema.sql`.
+- `APP_URL` : URL HTTPS de PlanniPro ;
+- `APP_ORIGINS` : origines autorisées séparées par des virgules ;
+- `RESEND_API_KEY` : secret du fournisseur d’e-mail, uniquement dans les secrets Edge Functions ;
+- `RESEND_FROM` : expéditeur vérifié.
 
-Il crée notamment :
+Aucune clé `service_role` n’est placée dans le navigateur ou les fichiers publics.
 
-- les tablettes enregistrées ;
-- les codes personnels protégés ;
-- les événements de badge immuables ;
-- les règles RLS ;
-- la file de synchronisation contrôlée par la base ;
-- les événements du journal d'activité.
+## Activer une tablette
 
-## 2. Donner le droit de configuration si nécessaire
+1. Dans PlanniPro, ouvrir **Paramètres → Pointeuses**.
+2. Cliquer sur **Gérer les pointeuses** et se connecter avec un compte autorisé.
+3. Choisir l’établissement et cliquer sur **Ajouter une pointeuse**.
+4. Noter le code à huit caractères. Il expire après dix minutes et ne fonctionne qu’une fois.
+5. Sur la tablette non configurée, ouvrir `pointeuse.html`, saisir le code, le nom et l’emplacement.
 
-Le gérant possède déjà le droit complet. Un manager doit recevoir explicitement la permission suivante dans **Utilisateurs et droits d'accès** :
+Le terminal génère son propre jeton aléatoire. Seule son empreinte SHA-256 est enregistrée dans Supabase ; le jeton reste chiffré dans IndexedDB sous la clé `plannipro_clock_device_token`.
 
-```text
-Pointage · Gérer les paramètres
-```
+## Codes salariés
 
-Ce droit permet uniquement de configurer des pointeuses dans son établissement ou son périmètre ; il ne donne pas accès aux paramètres de sécurité globaux.
+Depuis la fiche de gestion d’un terminal :
 
-## 3. Installer la tablette
+- **Générer** produit côté serveur un PIN cryptographiquement aléatoire visible une seule fois ;
+- **Créer un lien** produit un lien valable 24 heures et utilisable une seule fois ;
+- **Envoyer par e-mail** utilise l’Edge Function si le fournisseur est configuré.
 
-Depuis un ordinateur ou la tablette, lancer PlanniPro localement :
+Les PIN sont stockés avec bcrypt, jamais en clair. Le terminal ne télécharge ni liste globale de salariés, ni PIN, ni hash, ni vérificateur dérivé.
 
-```powershell
-npx --yes serve@14 -l 4173
-```
+## Hors connexion
 
-Puis ouvrir :
+Le shell de la page peut se charger hors ligne, mais tout nouveau pointage est refusé avec le message **Connexion indisponible — pointage momentanément impossible**. Cette décision remplace l’ancien cache de vérificateurs de PIN, qui ne répondait pas au niveau de sécurité requis.
 
-```text
-http://localhost:4173/pointeuse.html
-```
+## Révocation et conservation
 
-Sur la tablette :
+- une pointeuse sans pointage peut être supprimée définitivement ;
+- une pointeuse ayant servi est révoquée et archivée ;
+- ses événements restent liés au terminal et consultables pour l’audit ;
+- une révocation bloque immédiatement le cache et les nouveaux badges côté serveur.
 
-1. Cliquer sur **Configurer la tablette**.
-2. Se connecter temporairement avec le compte gérant ou manager habilité.
-3. Choisir l'entreprise, l'établissement et le nom de l'appareil.
-4. Créer un code personnel différent pour chaque collaborateur.
-5. Cliquer sur **Terminer** : la session manager est supprimée de la tablette.
-
-Après publication validée, l'adresse sera :
+## Vérifications locales
 
 ```text
-https://kaycobarry.github.io/plannipro/pointeuse.html
+node tests/verify-time-clock.mjs
+node tests/verify-time-clock-secure-scenarios.mjs
+node tests/verify-rbac-advanced.mjs
+node --check pointeuse.js
+node --check plannipro-cloud.js
+node --check sw.js
 ```
 
-La tablette peut être installée depuis le menu du navigateur grâce au manifeste PWA.
-
-## Fonctionnement hors connexion
-
-Les badges sont conservés dans IndexedDB, avec un identifiant unique. Au retour d'Internet, ils sont envoyés une seule fois à Supabase.
-
-La tablette vérifie localement une preuve de code pour pouvoir fonctionner sans réseau ; elle ne conserve jamais le code en clair. À la resynchronisation, Supabase vérifie de nouveau que :
-
-- la tablette est toujours active ;
-- le salarié appartient toujours à l'établissement ;
-- le badge n'existe pas déjà ;
-- l'enchaînement entrée / pause / reprise / sortie est valide ;
-- le pointage n'est pas trop ancien ou dans le futur.
-
-Un badge hors ligne est accepté jusqu'à sept jours après son heure d'origine. Au-delà, il doit être corrigé par un manager depuis PlanniPro pour éviter une falsification de date.
-
-## Sécurité opérationnelle
-
-- Ne jamais laisser la tablette déverrouillée hors du magasin.
-- Un appareil perdu doit être suspendu immédiatement depuis **Gérer les pointeuses** ; les badges en attente seront alors refusés à la prochaine connexion.
-- Ne pas inscrire les codes des salariés sur la tablette ou près de celle-ci.
-- Les corrections faites dans PlanniPro sont conservées comme corrections manager : les événements de badge bruts restent dans le journal d'activité.
-- Cette première version ne collecte ni photo, ni signature, ni géolocalisation.
-
-## Tests à faire avant publication
-
-1. Configurer une tablette de test avec le gérant.
-2. Créer le code d'un salarié de test et enregistrer entrée, pause, reprise, sortie.
-3. Vérifier que le récapitulatif apparaît dans **Pointage** et que le badge est identifié comme provenant de la tablette.
-4. Déconnecter le réseau, enregistrer un badge, reconnecter et vérifier qu'il n'apparaît qu'une fois.
-5. Suspendre la tablette depuis la liste des appareils, puis vérifier qu'un nouveau badge est refusé.
-6. Tester qu'un salarié ne peut lire que ses événements et qu'un manager n'accède pas à un autre établissement.
-
+Les tests statiques ne remplacent pas l’application de la migration et une recette avec de vrais comptes sur le projet Supabase.
