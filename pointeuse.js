@@ -1,4 +1,4 @@
-/* PlanniPro Pointeuse — tablette hors ligne, synchronisation par Supabase RPC. */
+/* PlanniPro Pointeuse - activation volontaire, PIN vérifié uniquement par Supabase. */
 (function () {
   'use strict';
 
@@ -6,49 +6,33 @@
   const config = window.PLANNIPRO_SUPABASE_CONFIG;
   const DB_NAME = 'plannipro-time-clock';
   const DB_VERSION = 1;
-  const PBKDF2_ITERATIONS = 310000;
-  const MAX_LOCAL_ATTEMPTS = 5;
-  const LOCAL_LOCK_MS = 5 * 60 * 1000;
+  const DEVICE_STORAGE_KEY = 'plannipro_clock_device_token';
+  const APP_VERSION = '3.0.0';
+  const params = new URLSearchParams(window.location.search);
 
   if (!root || !config?.url || !config?.publishableKey || !window.supabase?.createClient) {
     if (root) root.innerHTML = '<div class="tc-empty">La configuration sécurisée de la pointeuse est indisponible.</div>';
     return;
   }
 
-  // A manager session only exists in memory during configuration. The kiosk
-  // never persists an e-mail/password session in localStorage.
   const api = window.supabase.createClient(config.url, config.publishableKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
 
   const state = {
-    device: null,
-    roster: [],
-    queue: [],
-    screen: 'loading',
-    search: '',
-    selectedEmployeeId: null,
-    pin: '',
-    verified: null,
-    message: null,
-    busy: false,
-    manager: null,
-    managerPurpose: 'pair',
-    managerEmployees: [],
-    managerDevices: [],
-    setupOrganizationId: '',
-    setupEstablishments: [],
-    pinTargetId: null,
-    localFailures: 0,
-    localLockedUntil: 0,
-    lastSyncError: null
+    screen: 'loading', device: null, deviceToken: null, pin: '', verified: null,
+    message: null, busy: false, manager: null, contexts: [], organizationId: '',
+    establishments: [], devices: [], employees: [], selectedDevice: null,
+    activation: null, oneTimeSecret: null, resultTimer: null,
+    invitationToken: params.get('clock-pin') || ''
   };
 
+  const byId = (id) => document.getElementById(id);
+  const asArray = (value) => Array.isArray(value) ? value : [];
   const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
   }[char]));
-  const byId = (id) => document.getElementById(id);
-  const asArray = (value) => Array.isArray(value) ? value : [];
+  const newId = () => window.crypto.randomUUID();
   const nowIso = () => new Date().toISOString();
 
   function appError(message) {
@@ -59,19 +43,70 @@
 
   function errorMessage(error) {
     const message = String(error?.message || error?.userMessage || 'Opération impossible pour le moment.');
+    if (/invalid, expired or already used|activation code/i.test(message)) return 'Le code d’activation est invalide, expiré ou déjà utilisé.';
     if (/not authorized|permission|JWT|row-level|rls/i.test(message)) return 'Cette action n’est pas autorisée pour ce profil.';
-    if (/time clock is no longer active|not authorized/i.test(message)) return 'Cette tablette a été désactivée.';
-    if (/invalid time clock code/i.test(message)) return 'Code personnel incorrect.';
-    if (/offline badge proof/i.test(message)) return 'Ce badge hors ligne doit être vérifié par un manager.';
-    if (/temporarily locked/i.test(message)) return 'La tablette est temporairement verrouillée après plusieurs essais.';
-    if (/timestamp/i.test(message)) return 'L’heure du badge est invalide. Vérifiez l’heure de la tablette.';
+    if (/no longer active|time clock unavailable/i.test(message)) return 'Cette pointeuse a été désactivée par un responsable.';
+    if (/incorrect ou indisponible|invalid time clock code/i.test(message)) return 'Code incorrect ou indisponible.';
+    if (/temporarily locked/i.test(message)) return 'Trop d’essais. Réessayez dans quelques minutes.';
+    if (/failed to fetch|network|fetch failed|load failed/i.test(message)) return 'Connexion indisponible — pointage momentanément impossible.';
     if (/attendance state/i.test(message)) return 'Cette action ne correspond pas au dernier badge enregistré.';
-    if (/failed to fetch|network|fetch failed/i.test(message)) return 'Connexion indisponible : le badge reste en attente.';
     return message.length > 180 ? 'Opération impossible pour le moment.' : message;
   }
 
-  function isNetworkFailure(error) {
-    return !navigator.onLine || /failed to fetch|network|fetch failed|timeout|load failed/i.test(String(error?.message || ''));
+  function openDatabase() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv', { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { keyPath: 'id' });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || appError('Stockage local indisponible.'));
+    });
+  }
+
+  async function dbGet(key) {
+    const db = await openDatabase();
+    try {
+      return await new Promise((resolve, reject) => {
+        const request = db.transaction('kv', 'readonly').objectStore('kv').get(key);
+        request.onsuccess = () => resolve(request.result?.value || null);
+        request.onerror = () => reject(request.error);
+      });
+    } finally { db.close(); }
+  }
+
+  async function dbSet(key, value) {
+    const db = await openDatabase();
+    try {
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction('kv', 'readwrite');
+        transaction.objectStore('kv').put({ key, value });
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+    } finally { db.close(); }
+  }
+
+  async function dbDelete(key) {
+    const db = await openDatabase();
+    try {
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction('kv', 'readwrite');
+        transaction.objectStore('kv').delete(key);
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+    } finally { db.close(); }
+  }
+
+  async function cryptoKey() {
+    let key = await dbGet('device-crypto-key');
+    if (key) return key;
+    key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    await dbSet('device-crypto-key', key);
+    return key;
   }
 
   function bytesToBase64(bytes) {
@@ -81,140 +116,19 @@
   }
 
   function base64ToBytes(value) {
-    const binary = atob(String(value || ''));
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-    return bytes;
+    const binary = atob(value);
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
   }
 
-  function randomBytes(size) {
-    const bytes = new Uint8Array(size);
-    window.crypto.getRandomValues(bytes);
-    return bytes;
+  async function encryptToken(token) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await cryptoKey(), new TextEncoder().encode(token));
+    return { iv: bytesToBase64(iv), data: bytesToBase64(new Uint8Array(data)) };
   }
 
-  function newId() {
-    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
-    const bytes = randomBytes(16);
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-  }
-
-  async function sha256Hex(value) {
-    const bytes = new TextEncoder().encode(String(value));
-    const digest = await window.crypto.subtle.digest('SHA-256', bytes);
-    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-  }
-
-  async function deriveOfflineHash(pin, saltBase64, iterations) {
-    const material = await window.crypto.subtle.importKey('raw', new TextEncoder().encode(String(pin)), 'PBKDF2', false, ['deriveBits']);
-    const bits = await window.crypto.subtle.deriveBits({
-      name: 'PBKDF2',
-      hash: 'SHA-256',
-      salt: base64ToBytes(saltBase64),
-      iterations: Number(iterations || PBKDF2_ITERATIONS)
-    }, material, 256);
-    return bytesToBase64(new Uint8Array(bits));
-  }
-
-  async function proofForEvent(employee, event) {
-    const key = await window.crypto.subtle.importKey('raw', base64ToBytes(employee.offline_hash), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-    const message = `${event.deviceId}|${event.employeeId}|${event.eventType}|${event.occurredAt}|${event.id}`;
-    const signature = await window.crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
-    return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join('');
-  }
-
-  function sameValue(left, right) {
-    const a = String(left || '');
-    const b = String(right || '');
-    if (a.length !== b.length) return false;
-    let difference = 0;
-    for (let index = 0; index < a.length; index += 1) difference |= a.charCodeAt(index) ^ b.charCodeAt(index);
-    return difference === 0;
-  }
-
-  function openDatabase() {
-    return new Promise((resolve, reject) => {
-      if (!window.indexedDB) return reject(appError('IndexedDB est nécessaire au mode hors connexion.'));
-      const request = window.indexedDB.open(DB_NAME, DB_VERSION);
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv', { keyPath: 'key' });
-        if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { keyPath: 'id' });
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || appError('Impossible d’ouvrir le cache local.'));
-    });
-  }
-
-  async function dbGet(store, key) {
-    const db = await openDatabase();
-    try {
-      return await new Promise((resolve, reject) => {
-        const request = db.transaction(store, 'readonly').objectStore(store).get(key);
-        request.onsuccess = () => resolve(request.result ? request.result.value : null);
-        request.onerror = () => reject(request.error || appError('Lecture locale impossible.'));
-      });
-    } finally { db.close(); }
-  }
-
-  async function dbSet(store, key, value) {
-    const db = await openDatabase();
-    try {
-      await new Promise((resolve, reject) => {
-        const transaction = db.transaction(store, 'readwrite');
-        transaction.objectStore(store).put(store === 'queue' ? value : { key, value });
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error || appError('Écriture locale impossible.'));
-      });
-    } finally { db.close(); }
-  }
-
-  async function dbDelete(store, key) {
-    const db = await openDatabase();
-    try {
-      await new Promise((resolve, reject) => {
-        const transaction = db.transaction(store, 'readwrite');
-        transaction.objectStore(store).delete(key);
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error || appError('Suppression locale impossible.'));
-      });
-    } finally { db.close(); }
-  }
-
-  async function dbAll(store) {
-    const db = await openDatabase();
-    try {
-      return await new Promise((resolve, reject) => {
-        const request = db.transaction(store, 'readonly').objectStore(store).getAll();
-        request.onsuccess = () => resolve(request.result || []);
-        request.onerror = () => reject(request.error || appError('Lecture de la file impossible.'));
-      });
-    } finally { db.close(); }
-  }
-
-  async function deviceCryptoKey() {
-    let key = await dbGet('kv', 'device-crypto-key');
-    if (key) return key;
-    key = await window.crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-    await dbSet('kv', 'device-crypto-key', key);
-    return key;
-  }
-
-  async function encryptDeviceSecret(secret) {
-    const iv = randomBytes(12);
-    const key = await deviceCryptoKey();
-    const encrypted = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(secret));
-    return { iv: bytesToBase64(iv), data: bytesToBase64(new Uint8Array(encrypted)) };
-  }
-
-  async function decryptDeviceSecret(cipher) {
-    if (!cipher?.iv || !cipher?.data) throw appError('Le secret local de cette tablette est indisponible. Reconfigurez l’appareil.');
-    const key = await deviceCryptoKey();
-    const decrypted = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(cipher.iv) }, key, base64ToBytes(cipher.data));
-    return new TextDecoder().decode(decrypted);
+  async function decryptToken(cipher) {
+    const data = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(cipher.iv) }, await cryptoKey(), base64ToBytes(cipher.data));
+    return new TextDecoder().decode(data);
   }
 
   async function callRpc(name, args) {
@@ -230,86 +144,60 @@
   }
 
   function activeManagerContexts(contexts, required) {
-    const keys = required ? asArray(required) : [
-      'pointage.edit_schedule', 'pointage.suspend_device',
-      'pointage.reactivate_device', 'pointage.manage_settings'
-    ];
+    const keys = required || ['clock_devices.view', 'clock_devices.create', 'clock_devices.update', 'clock_devices.disable'];
     return asArray(contexts).filter((context) => keys.some((key) => hasPermission(context, key)));
   }
 
   function managerCan(key, organizationId) {
-    return activeManagerContexts(state.manager?.contexts, [key, 'pointage.manage_settings'])
-      .some((context) => !organizationId || context.organization_id === organizationId);
+    return state.contexts.some((context) => context.organization_id === organizationId && hasPermission(context, key));
   }
 
-  function employeeById(id) {
-    return state.roster.find((employee) => employee.employee_id === id) || null;
+  async function storeDevice(device, token) {
+    state.device = device;
+    state.deviceToken = token;
+    await dbSet(DEVICE_STORAGE_KEY, { device, tokenCipher: await encryptToken(token) });
   }
 
-  function employeeName(employee) {
-    return String(employee?.display_name || 'Collaborateur').trim() || 'Collaborateur';
+  async function loadDevice() {
+    let stored = await dbGet(DEVICE_STORAGE_KEY);
+    let migratedLegacyDevice = false;
+    if (!stored) {
+      const legacy = await dbGet('device');
+      if (legacy?.secretCipher) { stored = { device: legacy, tokenCipher: legacy.secretCipher }; migratedLegacyDevice = true; }
+      else if (legacy?.secret) {
+        await storeDevice(legacy, legacy.secret);
+        await dbDelete('device');
+        await dbSet('cache', { securityMigrationAt: nowIso() });
+        return;
+      }
+    }
+    // Previous releases cached a verifier derived from every employee PIN.
+    // It is deliberately overwritten and is never used by the secure flow.
+    await dbSet('cache', { securityMigrationAt: nowIso() });
+    if (!stored?.device || !stored?.tokenCipher) return;
+    state.device = stored.device;
+    state.deviceToken = await decryptToken(stored.tokenCipher);
+    if (migratedLegacyDevice || !(await dbGet(DEVICE_STORAGE_KEY))) {
+      await storeDevice(state.device, state.deviceToken);
+      await dbDelete('device');
+    }
   }
 
-  function employeeInitials(employee) {
-    return employeeName(employee).split(/\s+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
-  }
-
-  function eventLabel(type) {
-    return ({
-      clock_in: 'Entrée',
-      break_start: 'Début de pause',
-      break_end: 'Reprise',
-      clock_out: 'Sortie'
-    })[type] || 'Badge';
-  }
-
-  function employeeAttendanceState(employeeId) {
-    const employee = employeeById(employeeId);
-    let last = employee?.last_event_type || null;
-    let at = employee?.last_event_at || null;
-    state.queue
-      .filter((event) => event.employeeId === employeeId && event.status === 'pending')
-      .sort((left, right) => String(left.occurredAt).localeCompare(String(right.occurredAt)))
-      .forEach((event) => { last = event.eventType; at = event.occurredAt; });
-    return { type: last, at };
-  }
-
-  function deviceCanBadge() {
-    return state.device?.status === 'active';
-  }
-
-  function attendanceLabel(employeeId) {
-    const current = employeeAttendanceState(employeeId).type;
-    if (current === 'clock_in' || current === 'break_end') return 'En poste';
-    if (current === 'break_start') return 'En pause';
-    return 'À pointer';
-  }
-
-  function allowedActions(employeeId) {
-    const current = employeeAttendanceState(employeeId).type;
-    if (!current || current === 'clock_out') return ['clock_in'];
-    if (current === 'break_start') return ['break_end'];
-    return ['break_start', 'clock_out'];
-  }
-
-  function connectionKind() {
-    if (!navigator.onLine) return 'pending';
-    if (state.lastSyncError) return 'error';
-    return state.queue.some((event) => event.status === 'pending') ? 'pending' : 'online';
-  }
-
-  function connectionText() {
-    const pending = state.queue.filter((event) => event.status === 'pending').length;
-    const blocked = state.queue.filter((event) => event.status === 'blocked').length;
-    if (!navigator.onLine) return pending ? `${pending} badge${pending > 1 ? 's' : ''} en attente · hors connexion` : 'Hors connexion';
-    if (blocked) return `${blocked} badge${blocked > 1 ? 's' : ''} à vérifier`;
-    if (pending) return `${pending} badge${pending > 1 ? 's' : ''} en attente`;
-    return 'Synchronisé';
+  async function refreshDevice() {
+    if (!state.device || !state.deviceToken || !navigator.onLine) return;
+    const data = await callRpc('get_time_clock_device_cache', {
+      p_device_id: state.device.id, p_device_secret: state.deviceToken
+    });
+    await storeDevice({ ...state.device, ...data.device }, state.deviceToken);
   }
 
   function topbar() {
-    const deviceName = state.device?.name || 'Configuration requise';
-    return `<header class="tc-top"><div class="tc-brand"><span class="tc-brand-mark">✓</span><span>Planni<b>Pro</b></span></div><div class="tc-device"><span class="tc-status ${connectionKind()}">${escapeHtml(connectionText())}</span><span>· ${escapeHtml(deviceName)}</span><button class="tc-icon-btn" type="button" data-tc-action="open-manager" aria-label="Configuration de la tablette" title="Configuration">⚙</button></div></header>`;
+    const online = navigator.onLine;
+    return `<header class="tc-top"><div class="tc-brand"><span class="tc-brand-mark">P</span><span>Planni<b>Pro</b></span></div><div class="tc-device"><span class="tc-status ${online ? 'online' : 'error'}">${online ? 'En ligne' : 'Hors connexion'}</span><span>${escapeHtml(state.device?.name || 'Terminal non activé')}</span><button class="tc-icon-btn" data-action="manage" aria-label="Gérer les pointeuses" title="Gérer les pointeuses">⚙</button></div></header>`;
+  }
+
+  function messageHtml() {
+    return state.message ? `<div class="tc-message ${state.message.kind || ''}" role="status">${escapeHtml(state.message.text)}</div>` : '';
   }
 
   function setRoot(html) {
@@ -319,671 +207,293 @@
   }
 
   function updateClock() {
-    const time = new Date();
-    const timeNode = byId('tc-clock-time');
-    const dateNode = byId('tc-clock-date');
-    if (timeNode) timeNode.textContent = time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-    if (dateNode) dateNode.textContent = time.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  }
-
-  function messageHtml() {
-    if (!state.message) return '';
-    return `<div class="tc-message ${state.message.kind || ''}">${escapeHtml(state.message.text)}</div>`;
+    const date = new Date();
+    if (byId('clock-time')) byId('clock-time').textContent = date.toLocaleTimeString('fr-FR');
+    if (byId('clock-date')) byId('clock-date').textContent = date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   }
 
   function render() {
+    if (state.screen === 'pin-invitation') return renderPinInvitation();
     if (state.screen === 'manager-login') return renderManagerLogin();
-    if (state.screen === 'pair-device') return renderPairDevice();
-    if (state.screen === 'manager-console') return renderManagerConsole();
-    if (state.screen === 'device-list') return renderDeviceList();
-    if (state.screen === 'set-pin') return renderSetPin();
-    if (state.screen === 'pin-entry') return renderPinEntry();
-    if (state.screen === 'choose-action') return renderChooseAction();
-    if (!state.device) return renderUnconfigured();
+    if (state.screen === 'manager') return renderManager();
+    if (state.screen === 'employees') return renderEmployees();
+    if (state.screen === 'activation') return renderActivation();
+    if (state.screen === 'actions') return renderActions();
+    if (state.screen === 'success') return renderSuccess();
+    if (!state.device) return renderActivation();
     return renderKiosk();
   }
 
-  function renderUnconfigured() {
-    setRoot(`${topbar()}<section class="tc-main"><article class="tc-card tc-dialog" style="margin:clamp(18px,9vh,82px) auto"><p class="tc-overline">Pointeuse tablette</p><h2>Cette tablette n’est pas encore enregistrée.</h2><p>Un gérant ou un manager habilité doit l’associer à un établissement, puis définir les codes individuels des collaborateurs. Aucun mot de passe manager ne restera sur cet appareil.</p>${messageHtml()}<div class="tc-dialog-actions"><button class="tc-btn" type="button" data-tc-action="start-device-management">Gérer les pointeuses</button><button class="tc-btn primary" type="button" data-tc-action="start-pair">Configurer la tablette</button></div><div class="tc-note">Les pointages sont conservés localement en cas de coupure, puis synchronisés dès le retour d’Internet.</div></article></section>`);
+  function renderActivation() {
+    state.screen = 'activation';
+    setRoot(`${topbar()}<main class="tc-main"><section class="tc-dialog tc-activation"><p class="tc-overline">Activation sécurisée</p><h1>Activer cette pointeuse</h1><p>Ce navigateur n’est pas encore enregistré comme terminal de pointage. L’activation doit être autorisée par un responsable.</p>${messageHtml()}<form id="activation-form" class="tc-form"><label class="tc-label">Code temporaire<input class="tc-field tc-code" name="code" autocomplete="one-time-code" maxlength="9" placeholder="AB12-CD34" required></label><label class="tc-label">Nom de la pointeuse<input class="tc-field" name="name" maxlength="80" placeholder="Pointeuse entrée principale" required></label><label class="tc-label">Emplacement (facultatif)<input class="tc-field" name="location" maxlength="160" placeholder="Accueil"></label><label class="tc-label">Description (facultative)<textarea class="tc-field" name="description" maxlength="500" rows="3"></textarea></label><div class="tc-dialog-actions"><button class="tc-btn" type="button" data-action="manage">Se connecter comme responsable</button><button class="tc-btn primary" type="submit" ${state.busy || !navigator.onLine ? 'disabled' : ''}>${state.busy ? 'Activation…' : 'Activer le terminal'}</button></div></form>${!navigator.onLine ? '<div class="tc-note error">Une connexion Internet est nécessaire pour activer ce terminal.</div>' : ''}</section></main>`);
   }
 
   function renderKiosk() {
-    const query = state.search.trim().toLocaleLowerCase('fr-FR');
-    const employees = state.roster.filter((employee) => employeeName(employee).toLocaleLowerCase('fr-FR').includes(query));
-    const pending = state.queue.filter((event) => event.status === 'pending').length;
-    const blocked = state.queue.filter((event) => event.status === 'blocked').length;
-    const active = deviceCanBadge();
-    const cards = employees.map((employee) => `<button class="tc-employee" type="button" data-tc-action="select-employee" data-tc-employee="${escapeHtml(employee.employee_id)}" ${active ? '' : 'disabled'}><span class="tc-avatar">${escapeHtml(employeeInitials(employee))}</span><span class="tc-employee-name">${escapeHtml(employeeName(employee))}</span><span class="tc-employee-state">${escapeHtml(attendanceLabel(employee.employee_id))}</span></button>`).join('');
-    const availabilityMessage = active
-      ? messageHtml()
-      : '<div class="tc-message error">Cette tablette a été désactivée. Contactez un manager.</div>';
-    setRoot(`${topbar()}<section class="tc-main"><article class="tc-card tc-hero"><div><p class="tc-overline">${escapeHtml(state.device?.name || 'Pointeuse')}</p><h1>Qui pointe maintenant&nbsp;?</h1><p>Sélectionnez votre nom, saisissez votre code personnel puis choisissez votre action.</p></div><div class="tc-clock"><div class="tc-clock-time" id="tc-clock-time"></div><div class="tc-clock-date" id="tc-clock-date"></div></div></article>${availabilityMessage}<article class="tc-card tc-section"><div class="tc-section-head"><div><h2>Équipe de l’établissement</h2><p class="tc-sub">Seuls les collaborateurs avec un code actif apparaissent ici.</p></div><span class="tc-badge ${pending || blocked ? 'pending' : 'ok'}">${escapeHtml(connectionText())}</span></div><input id="tc-search" class="tc-search" type="search" autocomplete="off" placeholder="Rechercher un collaborateur" value="${escapeHtml(state.search)}" aria-label="Rechercher un collaborateur"><div class="tc-grid">${cards || '<div class="tc-empty">Aucun collaborateur avec un code actif. Ouvrez la configuration pour créer les codes.</div>'}</div></article><footer class="tc-footer"><span>Les badges ne modifient jamais le planning prévu.</span><span>${blocked ? `${blocked} badge${blocked > 1 ? 's' : ''} nécessitent une vérification` : pending ? 'Synchronisation automatique en attente' : active ? 'Mode hors connexion disponible' : 'Pointage suspendu'}</span></footer></section>`);
-  }
-
-  function renderPinEntry() {
-    const employee = employeeById(state.selectedEmployeeId);
-    if (!employee) { state.screen = state.device ? 'kiosk' : 'loading'; return render(); }
     const dots = Array.from({ length: 6 }, (_, index) => `<span class="tc-pin-dot ${index < state.pin.length ? 'filled' : ''}"></span>`).join('');
-    const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'cancel', '0', 'back'].map((key) => {
-      const label = key === 'cancel' ? 'Annuler' : key === 'back' ? '⌫' : key;
-      const cls = key === 'cancel' || key === 'back' ? ' subtle' : '';
-      return `<button class="tc-key${cls}" type="button" data-tc-action="pin-key" data-tc-key="${key}">${label}</button>`;
+    const keys = ['1','2','3','4','5','6','7','8','9','clear','0','validate'].map((key) => {
+      const label = key === 'clear' ? 'Effacer' : key === 'validate' ? 'Valider' : key;
+      return `<button class="tc-key ${key === 'validate' ? 'primary' : key === 'clear' ? 'subtle' : ''}" type="button" data-action="pin-key" data-key="${key}">${label}</button>`;
     }).join('');
-    setRoot(`${topbar()}<section class="tc-main"><article class="tc-dialog" style="margin:clamp(12px,6vh,56px) auto"><p class="tc-overline">Identification</p><h2>Saisissez votre code personnel</h2><div class="tc-pin-person"><span class="tc-avatar">${escapeHtml(employeeInitials(employee))}</span><strong>${escapeHtml(employeeName(employee))}</strong></div>${messageHtml()}<div class="tc-pin-dots" aria-label="Code à six chiffres">${dots}</div><div class="tc-keypad">${keys}</div><button class="tc-btn tc-back" type="button" data-tc-action="back-kiosk">← Retour à l’équipe</button></article></section>`);
+    setRoot(`${topbar()}<main class="tc-main tc-kiosk"><section class="tc-clock-hero"><p class="tc-establishment">${escapeHtml(state.device.establishment_name || 'Établissement')}</p><h1>${escapeHtml(state.device.name)}</h1><div id="clock-date" class="tc-clock-date"></div><div id="clock-time" class="tc-clock-time"></div></section><section class="tc-pin-panel"><h2>Entrez votre code personnel</h2><p>Votre code contient six chiffres.</p>${messageHtml()}<div class="tc-pin-dots" aria-label="${state.pin.length} chiffre(s) saisi(s)">${dots}</div><div class="tc-keypad">${keys}</div>${!navigator.onLine ? '<div class="tc-note error">Connexion indisponible — pointage momentanément impossible.</div>' : ''}</section></main>`);
   }
 
-  function actionCard(type) {
-    const styles = { clock_in: 'in', break_start: 'pause', break_end: 'in', clock_out: 'out' };
-    const copy = {
-      clock_in: ['Entrée', 'Je commence mon service'],
-      break_start: ['Début de pause', 'Je pars en pause'],
-      break_end: ['Reprise', 'Je reprends mon service'],
-      clock_out: ['Sortie', 'Je termine mon service']
-    }[type];
-    return `<button type="button" class="tc-action ${styles[type]}" data-tc-action="record-badge" data-tc-event="${type}"><strong>${copy[0]}</strong><span>${copy[1]}</span></button>`;
+  function actionLabel(type) {
+    return ({ clock_in: ['Entrée', 'Je commence mon service'], break_start: ['Pause', 'Je pars en pause'], break_end: ['Reprise', 'Je reprends mon service'], clock_out: ['Sortie', 'Je termine mon service'] })[type];
   }
 
-  function renderChooseAction() {
-    const employee = employeeById(state.verified?.employeeId);
-    if (!employee || !state.verified || state.verified.expiresAt < Date.now()) {
-      state.verified = null; state.pin = ''; state.screen = 'pin-entry'; return render();
-    }
-    const status = attendanceLabel(employee.employee_id);
-    setRoot(`${topbar()}<section class="tc-main"><article class="tc-dialog" style="margin:clamp(12px,7vh,62px) auto"><p class="tc-overline">${escapeHtml(status)}</p><h2>Bonjour ${escapeHtml(employeeName(employee).split(/\s+/)[0])}</h2><p>Quelle action souhaitez-vous enregistrer&nbsp;?</p>${messageHtml()}<div class="tc-actions-grid">${allowedActions(employee.employee_id).map(actionCard).join('')}</div><div class="tc-dialog-actions"><button class="tc-btn" type="button" data-tc-action="cancel-verified">Annuler</button></div></article></section>`);
+  function renderActions() {
+    if (!state.verified || state.verified.expiresAt < Date.now()) { state.verified = null; state.screen = 'kiosk'; return render(); }
+    const buttons = asArray(state.verified.allowed_actions).map((type) => {
+      const copy = actionLabel(type);
+      return `<button class="tc-action ${type}" data-action="badge" data-event="${type}"><strong>${copy[0]}</strong><span>${copy[1]}</span></button>`;
+    }).join('');
+    setRoot(`${topbar()}<main class="tc-main"><section class="tc-dialog tc-action-dialog"><p class="tc-overline">Identification confirmée</p><h1>Bonjour ${escapeHtml(state.verified.first_name || '')}</h1><p>Quelle action souhaitez-vous enregistrer ?</p>${messageHtml()}<div class="tc-actions-grid">${buttons}</div><button class="tc-btn tc-wide" data-action="cancel">Annuler</button></section></main>`);
+  }
+
+  function renderSuccess() {
+    const result = state.oneTimeSecret || {};
+    setRoot(`${topbar()}<main class="tc-main"><section class="tc-success"><div class="tc-success-mark">✓</div><h1>${escapeHtml(result.greeting || 'Pointage enregistré')}</h1><p>${escapeHtml(result.message || '')}</p><span>${escapeHtml(result.detail || 'Bonne journée')}</span></section></main>`);
   }
 
   function renderManagerLogin() {
-    const title = state.managerPurpose === 'pair' ? 'Configurer la tablette' : 'Accès manager';
-    setRoot(`${topbar()}<section class="tc-main"><article class="tc-dialog" style="margin:clamp(18px,7vh,72px) auto"><p class="tc-overline">Accès sécurisé</p><h2>${title}</h2><p>Connectez-vous temporairement avec un compte disposant du droit requis pour cette action sur la pointeuse. La session sera effacée lorsque vous aurez terminé.</p>${messageHtml()}<form class="tc-form" id="tc-manager-login"><label class="tc-label">Adresse e-mail<input class="tc-field" name="email" type="email" autocomplete="username" required></label><label class="tc-label">Mot de passe<input class="tc-field" name="password" type="password" autocomplete="current-password" required minlength="8"></label><div class="tc-dialog-actions"><button class="tc-btn" type="button" data-tc-action="back-kiosk">Annuler</button><button class="tc-btn primary" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Connexion…' : 'Continuer'}</button></div></form></article></section>`);
+    setRoot(`${topbar()}<main class="tc-main"><section class="tc-dialog"><p class="tc-overline">Administration</p><h1>Gérer les pointeuses</h1><p>Cette session reste uniquement en mémoire et sera fermée en quittant l’écran.</p>${messageHtml()}<form id="manager-login" class="tc-form"><label class="tc-label">Adresse e-mail<input class="tc-field" type="email" name="email" autocomplete="username" required></label><label class="tc-label">Mot de passe<input class="tc-field" type="password" name="password" autocomplete="current-password" required></label><div class="tc-dialog-actions"><button class="tc-btn" type="button" data-action="cancel-manager">Annuler</button><button class="tc-btn primary" type="submit" ${state.busy ? 'disabled' : ''}>Se connecter</button></div></form></section></main>`);
   }
 
-  function renderPairDevice() {
-    const contexts = activeManagerContexts(state.manager?.contexts, ['pointage.edit_schedule', 'pointage.manage_settings']);
-    const selectedContext = contexts.find((context) => context.organization_id === state.setupOrganizationId) || contexts[0];
-    const establishmentOptions = state.setupEstablishments.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
-    setRoot(`${topbar()}<section class="tc-main"><article class="tc-dialog" style="margin:clamp(12px,5vh,52px) auto"><div class="tc-config-top"><div><p class="tc-overline">Association de la tablette</p><h2>Choisir l’établissement</h2></div><span class="tc-badge">Étape 1 / 2</span></div><p>Cette tablette n’affichera que les collaborateurs autorisés de l’établissement sélectionné.</p><div class="tc-setup-steps"><span class="tc-step on"></span><span class="tc-step"></span></div>${messageHtml()}<form class="tc-form" id="tc-pair-device"><label class="tc-label">Entreprise<select class="tc-field" name="organization_id" data-tc-change="setup-organization">${contexts.map((context) => `<option value="${escapeHtml(context.organization_id)}" ${context.organization_id === selectedContext?.organization_id ? 'selected' : ''}>${escapeHtml(context.organization_name)}</option>`).join('')}</select></label><label class="tc-label">Établissement<select class="tc-field" name="establishment_id" required>${establishmentOptions || '<option value="">Aucun établissement accessible</option>'}</select></label><label class="tc-label">Nom de la tablette<input class="tc-field" name="device_name" required minlength="2" maxlength="80" value="Pointeuse accueil" placeholder="ex. Pointeuse réserve"></label><label class="tc-label">Fuseau horaire<select class="tc-field" name="timezone"><option value="Europe/Paris">Europe/Paris</option></select></label><div class="tc-dialog-actions"><button class="tc-btn" type="button" data-tc-action="close-manager">Annuler</button><button class="tc-btn primary" type="submit" ${!establishmentOptions || state.busy ? 'disabled' : ''}>${state.busy ? 'Association…' : 'Associer la tablette'}</button></div></form><div class="tc-note">Un secret aléatoire est créé dans le stockage chiffrable de la tablette. Il ne donne accès ni aux dossiers RH ni aux plannings.</div></article></section>`);
-  }
-
-  function renderManagerConsole() {
-    const device = state.device;
-    const employees = state.managerEmployees;
-    const canEdit = managerCan('pointage.edit_schedule', device?.organization_id);
-    const rows = employees.map((employee) => `<div class="tc-manager-row"><div><strong>${escapeHtml(employee.display_name || 'Collaborateur')}</strong><span>${employee.has_pin ? `Code actif · version ${escapeHtml(employee.credential_version || 1)}` : 'Aucun code de pointage'}</span></div><div class="tc-row-actions">${canEdit ? `<button class="tc-btn tc-small" type="button" data-tc-action="set-pin" data-tc-employee="${escapeHtml(employee.employee_id)}">${employee.has_pin ? 'Modifier le code' : 'Créer le code'}</button>` : ''}</div></div>`).join('');
-    const isActive = device?.status !== 'suspended' && device?.status !== 'revoked';
-    const canToggle = managerCan(isActive ? 'pointage.suspend_device' : 'pointage.reactivate_device', device?.organization_id);
-    setRoot(`${topbar()}<section class="tc-main"><article class="tc-card tc-section"><div class="tc-section-head"><div><p class="tc-overline">Configuration manager</p><h2>${escapeHtml(device?.name || 'Pointeuse')}</h2><p class="tc-sub">Les codes ne sont jamais affichés ni stockés en clair.</p></div><span class="tc-badge ${isActive ? 'ok' : 'pending'}">${isActive ? 'Tablette active' : 'Tablette suspendue'}</span></div>${messageHtml()}<div class="tc-manager-list">${rows || '<div class="tc-empty">Aucun collaborateur actif dans cet établissement.</div>'}</div><div class="tc-dialog-actions"><button class="tc-btn" type="button" data-tc-action="show-device-list">Voir toutes les pointeuses</button>${canToggle ? `<button class="tc-btn danger" type="button" data-tc-action="toggle-device-status" data-tc-status="${isActive ? 'suspended' : 'active'}">${isActive ? 'Mettre en pause la tablette' : 'Réactiver la tablette'}</button>` : ''}<button class="tc-btn" type="button" data-tc-action="close-manager">Terminer</button></div></article></section>`);
-  }
-
-  function renderDeviceList() {
-    const contexts = activeManagerContexts(state.manager?.contexts);
-    const selectedId = state.setupOrganizationId || contexts[0]?.organization_id || '';
-    const rows = state.managerDevices.map((device) => {
+  function renderManager() {
+    const context = state.contexts.find((item) => item.organization_id === state.organizationId) || state.contexts[0];
+    const orgOptions = state.contexts.map((item) => `<option value="${item.organization_id}" ${item.organization_id === state.organizationId ? 'selected' : ''}>${escapeHtml(item.organization_name)}</option>`).join('');
+    const establishmentOptions = state.establishments.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('');
+    const cards = state.devices.map((device) => {
+      const status = device.status === 'active' ? 'Active' : device.status === 'archived' ? 'Archivée' : device.status === 'revoked' ? 'Révoquée' : 'Désactivée';
       const active = device.status === 'active';
-      const canToggle = managerCan(active ? 'pointage.suspend_device' : 'pointage.reactivate_device', state.setupOrganizationId);
-      return `<div class="tc-manager-row"><div><strong>${escapeHtml(device.name)}</strong><span>${escapeHtml(device.status)} · ${escapeHtml(device.establishment_name || 'Établissement')} · dernier contact ${device.last_seen_at ? new Date(device.last_seen_at).toLocaleString('fr-FR') : '—'}</span></div><div class="tc-row-actions">${canToggle ? `<button class="tc-btn tc-small ${active ? 'danger' : ''}" type="button" data-tc-action="manage-device-status" data-tc-device="${escapeHtml(device.id)}" data-tc-status="${active ? 'suspended' : 'active'}">${active ? 'Mettre en pause' : 'Réactiver'}</button>` : ''}</div></div>`;
+      return `<article class="tc-device-card"><div><span class="tc-badge ${active ? 'ok' : 'pending'}">${status}</span><h3>${escapeHtml(device.name)}</h3><p>${escapeHtml(device.establishment_name)}${device.location ? ` · ${escapeHtml(device.location)}` : ''}</p><dl><div><dt>Dernière activité</dt><dd>${device.last_seen_at ? new Date(device.last_seen_at).toLocaleString('fr-FR') : 'Jamais'}</dd></div><div><dt>Pointages</dt><dd>${Number(device.event_count || 0)}</dd></div><div><dt>Version</dt><dd>${escapeHtml(device.app_version || '—')}</dd></div></dl></div><div class="tc-card-actions"><button class="tc-btn tc-small" data-action="device-history" data-device="${device.id}">Historique</button>${managerCan('clock_devices.update', state.organizationId) ? `<button class="tc-btn tc-small" data-action="rename-device" data-device="${device.id}">Modifier</button>` : ''}${active && managerCan('clock_devices.disable', state.organizationId) ? `<button class="tc-btn tc-small" data-action="status-device" data-status="suspended" data-device="${device.id}">Désactiver</button><button class="tc-btn tc-small danger" data-action="revoke-device" data-device="${device.id}">Révoquer</button>` : ''}${!active && device.status !== 'archived' && managerCan('clock_devices.update', state.organizationId) ? `<button class="tc-btn tc-small" data-action="status-device" data-status="active" data-device="${device.id}">Réactiver</button>` : ''}${managerCan('clock_devices.delete', state.organizationId) ? `<button class="tc-btn tc-small danger" data-action="remove-device" data-device="${device.id}">Supprimer / archiver</button>` : ''}${managerCan('clock_pin.generate', state.organizationId) ? `<button class="tc-btn tc-small" data-action="employees" data-device="${device.id}">Codes salariés</button>` : ''}</div></article>`;
     }).join('');
-    const canPair = managerCan('pointage.edit_schedule', selectedId);
-    setRoot(`${topbar()}<section class="tc-main"><article class="tc-card tc-section"><div class="tc-section-head"><div><p class="tc-overline">Configuration manager</p><h2>Pointeuses enregistrées</h2><p class="tc-sub">Suspendez immédiatement une tablette perdue ou non utilisée.</p></div><span class="tc-badge">${state.managerDevices.length} appareil${state.managerDevices.length > 1 ? 's' : ''}</span></div>${messageHtml()}<label class="tc-label">Entreprise<select class="tc-field" data-tc-change="device-list-organization">${contexts.map((context) => `<option value="${escapeHtml(context.organization_id)}" ${context.organization_id === selectedId ? 'selected' : ''}>${escapeHtml(context.organization_name)}</option>`).join('')}</select></label><div class="tc-manager-list">${rows || '<div class="tc-empty">Aucune pointeuse visible dans votre périmètre.</div>'}</div><div class="tc-dialog-actions">${canPair ? '<button class="tc-btn primary" type="button" data-tc-action="start-pair">Ajouter une tablette</button>' : ''}<button class="tc-btn" type="button" data-tc-action="close-manager">Terminer</button></div></article></section>`);
+    const activation = state.activation ? `<div class="tc-one-time"><span>Code valable 10 minutes</span><strong>${escapeHtml(state.activation.code)}</strong><button class="tc-btn" data-action="copy" data-copy="${escapeHtml(state.activation.code)}">Copier</button><small>Ce code ne sera plus affiché après avoir quitté cet écran.</small></div>` : '';
+    setRoot(`${topbar()}<main class="tc-main"><section class="tc-card tc-admin"><div class="tc-section-head"><div><p class="tc-overline">Paramètres → Pointeuses</p><h1>Terminaux enregistrés</h1></div><button class="tc-btn" data-action="close-manager">Déconnexion manager</button></div>${messageHtml()}<div class="tc-admin-filters"><label class="tc-label">Entreprise<select class="tc-field" id="manager-org">${orgOptions}</select></label>${managerCan('clock_devices.create', state.organizationId) ? `<form id="activation-code" class="tc-inline-form"><label class="tc-label">Établissement<select class="tc-field" name="establishment_id">${establishmentOptions}</select></label><button class="tc-btn primary" ${!establishmentOptions ? 'disabled' : ''}>Ajouter une pointeuse</button></form>` : ''}</div>${activation}<div class="tc-device-list">${cards || '<div class="tc-empty">Aucune pointeuse enregistrée dans ce périmètre.</div>'}</div></section></main>`);
   }
 
-  function renderSetPin() {
-    const employee = state.managerEmployees.find((item) => item.employee_id === state.pinTargetId);
-    if (!employee) { state.screen = 'manager-console'; return render(); }
-    setRoot(`${topbar()}<section class="tc-main"><article class="tc-dialog" style="margin:clamp(16px,7vh,64px) auto"><p class="tc-overline">Code personnel</p><h2>${escapeHtml(employee.display_name || 'Collaborateur')}</h2><p>Choisissez un code individuel à six chiffres. Ne l’écrivez pas sur la tablette et ne le communiquez pas à un autre salarié.</p>${messageHtml()}<form class="tc-form" id="tc-set-pin"><input type="hidden" name="employee_id" value="${escapeHtml(employee.employee_id)}"><label class="tc-label">Nouveau code<input class="tc-field" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" name="pin" type="password" autocomplete="new-password" required></label><label class="tc-label">Confirmation du code<input class="tc-field" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" name="confirm_pin" type="password" autocomplete="new-password" required></label><div class="tc-dialog-actions"><button class="tc-btn" type="button" data-tc-action="back-manager">Annuler</button><button class="tc-btn primary" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Enregistrement…' : 'Enregistrer le code'}</button></div></form><div class="tc-note">Le code est protégé côté serveur. Une preuve temporaire est conservée dans la tablette uniquement pour le fonctionnement hors connexion.</div></article></section>`);
+  function renderEmployees() {
+    const device = state.selectedDevice;
+    const rows = state.employees.map((employee) => `<div class="tc-manager-row"><div><strong>${escapeHtml(employee.display_name)}</strong><span>${employee.has_pin ? `Code actif · version ${employee.credential_version}` : 'Aucun code actif'}</span></div><div class="tc-row-actions"><button class="tc-btn tc-small" data-action="generate-pin" data-employee="${employee.employee_id}">${employee.has_pin ? 'Réinitialiser' : 'Générer'}</button><button class="tc-btn tc-small" data-action="invite-pin" data-employee="${employee.employee_id}">Créer un lien</button><button class="tc-btn tc-small" data-action="send-pin-invite" data-employee="${employee.employee_id}">Envoyer par e-mail</button></div></div>`).join('');
+    const secret = state.oneTimeSecret ? `<div class="tc-one-time"><span>${escapeHtml(state.oneTimeSecret.label)}</span><strong>${escapeHtml(state.oneTimeSecret.value)}</strong><div><button class="tc-btn" data-action="copy" data-copy="${escapeHtml(state.oneTimeSecret.value)}">Copier</button>${state.oneTimeSecret.kind === 'pin' ? '<button class="tc-btn" data-action="print-secret">Imprimer</button>' : ''}<button class="tc-btn" data-action="hide-secret">Fermer définitivement</button></div><small>Cette valeur ne pourra plus être affichée ensuite.</small></div>` : '';
+    setRoot(`${topbar()}<main class="tc-main"><section class="tc-card tc-admin"><div class="tc-section-head"><div><p class="tc-overline">Codes de pointage</p><h1>${escapeHtml(device?.name || '')}</h1></div><button class="tc-btn" data-action="back-manager">Retour</button></div>${messageHtml()}${secret}<div class="tc-manager-list">${rows || '<div class="tc-empty">Aucun salarié actif pour cet établissement.</div>'}</div></section></main>`);
   }
 
-  async function loadLocalState() {
-    const storedDevice = await dbGet('kv', 'device');
-    if (storedDevice?.secretCipher) {
-      state.device = { ...storedDevice, secret: await decryptDeviceSecret(storedDevice.secretCipher) };
-    } else if (storedDevice?.secret) {
-      // Migration automatique d'une éventuelle configuration de préversion.
-      state.device = storedDevice;
-      await storeDevice(state.device);
-    } else {
-      state.device = null;
-    }
-    const cache = await dbGet('kv', 'cache');
-    state.roster = asArray(cache?.employees);
-    state.queue = asArray(await dbAll('queue')).sort((left, right) => String(left.occurredAt).localeCompare(String(right.occurredAt)));
-    state.localFailures = Number(await dbGet('kv', 'localFailures') || 0);
-    state.localLockedUntil = Number(await dbGet('kv', 'localLockedUntil') || 0);
+  function renderPinInvitation() {
+    setRoot(`${topbar()}<main class="tc-main"><section class="tc-dialog"><p class="tc-overline">Lien personnel sécurisé</p><h1>Définir mon code de pointage</h1><p>Choisissez six chiffres difficiles à deviner. Les suites simples et chiffres répétés sont refusés.</p>${messageHtml()}<form id="pin-invitation-form" class="tc-form"><label class="tc-label">Nouveau code<input class="tc-field" name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required></label><label class="tc-label">Confirmation<input class="tc-field" name="confirmation" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required></label><button class="tc-btn primary">Enregistrer définitivement</button></form></section></main>`);
   }
 
-  async function storeDevice(device) {
-    state.device = device;
-    const secretCipher = await encryptDeviceSecret(device.secret);
-    const persisted = { ...device, secretCipher };
-    delete persisted.secret;
-    await dbSet('kv', 'device', persisted);
-  }
-
-  async function refreshDeviceCache(options = {}) {
-    if (!state.device || !navigator.onLine) return false;
-    const data = await callRpc('get_time_clock_device_cache', {
-      p_device_id: state.device.id,
-      p_device_secret: state.device.secret
+  async function activate(form) {
+    if (!navigator.onLine) throw appError('Connexion indisponible — activation momentanément impossible.');
+    const fields = new FormData(form);
+    const token = bytesToBase64(crypto.getRandomValues(new Uint8Array(32))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    const device = await callRpc('activate_time_clock_device', {
+      p_activation_code: String(fields.get('code') || ''), p_device_token: token,
+      p_name: String(fields.get('name') || ''), p_location: String(fields.get('location') || ''),
+      p_description: String(fields.get('description') || ''), p_user_agent: navigator.userAgent,
+      p_app_version: APP_VERSION
     });
-    if (!data?.device) throw appError('Réponse de configuration invalide.');
-    state.device = { ...state.device, ...data.device, secret: state.device.secret, lastCacheAt: nowIso() };
-    state.roster = asArray(data.employees);
-    await storeDevice(state.device);
-    await dbSet('kv', 'cache', { ...data, savedAt: nowIso() });
-    state.lastSyncError = null;
-    if (options.render !== false) render();
-    return true;
+    await storeDevice(device, token);
+    await refreshDevice();
+    state.screen = 'kiosk';
+    state.message = { kind: 'ok', text: 'Pointeuse activée avec succès.' };
   }
 
-  async function addQueue(event) {
-    state.queue.push(event);
-    state.queue.sort((left, right) => String(left.occurredAt).localeCompare(String(right.occurredAt)));
-    await dbSet('queue', event.id, event);
-  }
-
-  async function updateQueue(event) {
-    const index = state.queue.findIndex((candidate) => candidate.id === event.id);
-    if (index >= 0) state.queue[index] = event;
-    await dbSet('queue', event.id, event);
-  }
-
-  async function removeQueue(id) {
-    state.queue = state.queue.filter((event) => event.id !== id);
-    await dbDelete('queue', id);
-  }
-
-  async function validateLocalPin(employee, pin) {
-    if (!employee?.offline_salt || !employee?.offline_hash || !window.crypto?.subtle) return false;
-    const derived = await deriveOfflineHash(pin, employee.offline_salt, employee.offline_iterations);
-    return sameValue(derived, employee.offline_hash);
-  }
-
-  async function verifyPinAndContinue() {
-    const employee = employeeById(state.selectedEmployeeId);
-    const pin = state.pin;
-    if (!employee || pin.length !== 6) return;
-    if (!deviceCanBadge()) {
-      state.pin = '';
-      state.verified = null;
-      state.screen = 'kiosk';
-      state.message = { kind: 'error', text: 'Cette tablette a été désactivée. Contactez un manager.' };
-      render();
-      return;
-    }
-    if (state.localLockedUntil > Date.now()) {
-      state.message = { kind: 'error', text: 'Trop d’essais. Réessayez dans quelques minutes.' };
-      state.pin = '';
-      render();
-      return;
-    }
-    state.busy = true;
-    state.message = null;
-    render();
-    try {
-      const localValid = await validateLocalPin(employee, pin);
-      if (!localValid && !navigator.onLine) {
-        state.localFailures += 1;
-        if (state.localFailures >= MAX_LOCAL_ATTEMPTS) state.localLockedUntil = Date.now() + LOCAL_LOCK_MS;
-        await dbSet('kv', 'localFailures', state.localFailures);
-        await dbSet('kv', 'localLockedUntil', state.localLockedUntil);
-        throw appError('Code incorrect ou actualisation nécessaire avant un pointage hors connexion.');
-      }
-      state.localFailures = 0;
-      state.localLockedUntil = 0;
-      await dbSet('kv', 'localFailures', 0);
-      await dbSet('kv', 'localLockedUntil', 0);
-      state.verified = { employeeId: employee.employee_id, pin, localValid, expiresAt: Date.now() + 2 * 60 * 1000 };
-      state.pin = '';
-      state.screen = 'choose-action';
-    } catch (error) {
-      state.pin = '';
-      state.message = { kind: 'error', text: errorMessage(error) };
-    } finally {
-      state.busy = false;
-      render();
-    }
-  }
-
-  async function transmitEvent(event, pin) {
-    return callRpc('time_clock_badge', {
-      p_device_id: event.deviceId,
-      p_device_secret: state.device.secret,
-      p_employee_id: event.employeeId,
-      p_event_type: event.eventType,
-      p_occurred_at: event.occurredAt,
-      p_client_event_id: event.id,
-      p_offline_proof: event.offlineProof || null,
-      p_pin: pin || null
+  async function verifyPin() {
+    if (state.pin.length !== 6 || state.busy) return;
+    if (!navigator.onLine) throw appError('Connexion indisponible — pointage momentanément impossible.');
+    state.verified = await callRpc('verify_time_clock_pin', {
+      p_device_id: state.device.id, p_device_token: state.deviceToken, p_pin: state.pin
     });
+    state.verified.pin = state.pin;
+    state.verified.expiresAt = Date.now() + 2 * 60 * 1000;
+    state.pin = '';
+    state.screen = 'actions';
   }
 
-  async function updateRosterAfterEvent(event) {
-    state.roster = state.roster.map((employee) => employee.employee_id === event.employeeId
-      ? { ...employee, last_event_type: event.eventType, last_event_at: event.occurredAt }
-      : employee);
-    await dbSet('kv', 'cache', { device: state.device ? { ...state.device, secret: undefined } : null, employees: state.roster, savedAt: nowIso() });
-  }
-
-  async function recordBadge(eventType) {
+  async function recordBadge(type) {
+    if (!navigator.onLine) throw appError('Connexion indisponible — pointage momentanément impossible.');
     const verified = state.verified;
-    const employee = employeeById(verified?.employeeId);
-    if (!verified || !employee || !state.device) return;
-    if (!deviceCanBadge()) {
-      state.message = { kind: 'error', text: 'Cette tablette a été désactivée. Contactez un manager.' };
-      state.verified = null;
-      state.pin = '';
-      state.screen = 'kiosk';
-      render();
-      return;
-    }
-    if (verified.expiresAt < Date.now()) {
-      state.message = { kind: 'error', text: 'Le code a expiré. Veuillez vous identifier à nouveau.' };
-      state.verified = null; state.screen = 'pin-entry'; render(); return;
-    }
-    state.busy = true;
-    state.message = null;
-    render();
-    const event = {
-      id: newId(),
-      deviceId: state.device.id,
-      employeeId: employee.employee_id,
-      eventType,
-      occurredAt: nowIso(),
-      offlineProof: null,
-      status: 'pending',
-      createdAt: nowIso()
+    const occurredAt = nowIso();
+    const response = await callRpc('time_clock_badge', {
+      p_device_id: state.device.id, p_device_secret: state.deviceToken,
+      p_employee_id: verified.employee_id, p_event_type: type, p_occurred_at: occurredAt,
+      p_client_event_id: newId(), p_offline_proof: null, p_pin: verified.pin
+    });
+    const time = new Date(response.occurred_at || occurredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    state.oneTimeSecret = {
+      greeting: type === 'clock_out' ? `Au revoir ${verified.first_name}` : `Bonjour ${verified.first_name}`,
+      message: `${actionLabel(type)[0]} enregistrée à ${time}`,
+      detail: type === 'clock_out' && response.summary?.dur ? `Temps de présence aujourd’hui : ${response.summary.dur} h` : 'Bonne journée'
     };
-    try {
-      if (verified.localValid) event.offlineProof = await proofForEvent(employee, event);
-      if (!navigator.onLine && !event.offlineProof) throw appError('La tablette doit être actualisée avant de pouvoir pointer hors connexion.');
-      await addQueue(event);
-      if (navigator.onLine) {
-        try {
-          await transmitEvent(event, verified.pin);
-          await removeQueue(event.id);
-          await updateRosterAfterEvent(event);
-          state.message = { kind: 'ok', text: `${eventLabel(eventType)} enregistrée à ${new Date(event.occurredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.` };
-        } catch (error) {
-          if (!isNetworkFailure(error)) {
-            await removeQueue(event.id);
-            if (/no longer active|not authorized/i.test(String(error?.message || ''))) {
-              await storeDevice({ ...state.device, status: 'suspended' });
-              state.lastSyncError = errorMessage(error);
-              throw error;
-            }
-            if (/invalid time clock code/i.test(String(error?.message || ''))) {
-              try { await refreshDeviceCache({ render: false }); } catch (_) { /* Keep the safe local screen. */ }
-              throw error;
-            }
-            event.status = 'blocked';
-            event.error = errorMessage(error);
-            await addQueue(event);
-          } else {
-            await updateRosterAfterEvent(event);
-            state.lastSyncError = errorMessage(error);
-            state.message = { kind: '', text: 'Badge conservé localement. Il sera synchronisé automatiquement.' };
-          }
-        }
-      } else {
-        await updateRosterAfterEvent(event);
-        state.message = { kind: '', text: 'Badge enregistré hors connexion. Il sera synchronisé dès le retour d’Internet.' };
-      }
-      state.verified = null;
-      state.pin = '';
-      state.screen = 'kiosk';
-    } catch (error) {
-      state.message = { kind: 'error', text: errorMessage(error) };
-      state.verified = null;
-      state.pin = '';
-      state.screen = deviceCanBadge() ? 'pin-entry' : 'kiosk';
-    } finally {
-      state.busy = false;
-      render();
-    }
-  }
-
-  async function flushQueue() {
-    if (!state.device || !navigator.onLine || state.busy) return;
-    const pending = state.queue.filter((event) => event.status === 'pending');
-    for (const event of pending) {
-      if (!event.offlineProof) {
-        event.status = 'blocked';
-        event.error = 'Preuve hors connexion indisponible.';
-        await updateQueue(event);
-        continue;
-      }
-      try {
-        await transmitEvent(event, null);
-        await removeQueue(event.id);
-      } catch (error) {
-        if (isNetworkFailure(error)) { state.lastSyncError = errorMessage(error); break; }
-        event.status = 'blocked';
-        event.error = errorMessage(error);
-        await updateQueue(event);
-      }
-    }
-    render();
-  }
-
-  async function syncDevice() {
-    if (!state.device || !navigator.onLine) return;
-    try {
-      await refreshDeviceCache({ render: false });
-      await flushQueue();
-      state.lastSyncError = null;
-    } catch (error) {
-      state.lastSyncError = errorMessage(error);
-      if (/no longer active|not authorized/i.test(String(error?.message || ''))) {
-        await storeDevice({ ...state.device, status: 'suspended' });
-        state.message = { kind: 'error', text: 'Cette tablette a été désactivée. Contactez un manager.' };
-      }
-    }
-    render();
+    state.verified = null;
+    state.screen = 'success';
+    clearTimeout(state.resultTimer);
+    state.resultTimer = setTimeout(() => { state.oneTimeSecret = null; state.screen = 'kiosk'; render(); }, 4500);
   }
 
   async function managerLogin(form) {
     const fields = new FormData(form);
-    state.busy = true;
-    state.message = null;
-    render();
-    try {
-      const email = String(fields.get('email') || '').trim().toLowerCase();
-      const password = String(fields.get('password') || '');
-      const { data, error } = await api.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      const required = state.managerPurpose === 'pair' ? ['pointage.edit_schedule', 'pointage.manage_settings'] : null;
-      const contexts = activeManagerContexts(await callRpc('get_access_context', {}), required);
-      if (!contexts.length) throw appError('Ce compte ne possède pas le droit de configurer une pointeuse.');
-      state.manager = { user: data.user, contexts };
-      if (state.managerPurpose === 'pair') {
-        state.setupOrganizationId = contexts[0].organization_id;
-        await loadSetupEstablishments(state.setupOrganizationId);
-        state.screen = 'pair-device';
-      } else {
-        if (state.device) {
-          const matching = contexts.find((context) => context.organization_id === state.device?.organization_id);
-          if (!matching) throw appError('Ce compte ne peut pas gérer l’établissement de cette tablette.');
-          await loadManagerEmployees(matching.organization_id, state.device.establishment_id);
-          state.screen = 'manager-console';
-        } else {
-          state.setupOrganizationId = contexts[0].organization_id;
-          await loadManagerDevices(state.setupOrganizationId);
-          state.screen = 'device-list';
-        }
-      }
-    } catch (error) {
-      state.message = { kind: 'error', text: errorMessage(error) };
-    } finally {
-      state.busy = false;
-      render();
-    }
-  }
-
-  async function loadSetupEstablishments(organizationId) {
-    state.setupOrganizationId = organizationId;
-    const { data, error } = await api.from('establishments').select('id,name').eq('organization_id', organizationId).eq('is_active', true).order('name');
+    const { error } = await api.auth.signInWithPassword({ email: String(fields.get('email') || '').trim().toLowerCase(), password: String(fields.get('password') || '') });
     if (error) throw error;
-    state.setupEstablishments = asArray(data);
+    state.contexts = activeManagerContexts(await callRpc('get_access_context', {}));
+    if (!state.contexts.length) throw appError('Ce compte ne peut pas gérer les pointeuses.');
+    state.organizationId = state.contexts[0].organization_id;
+    await loadManagerData();
+    state.screen = 'manager';
   }
 
-  async function pairDevice(form) {
-    const fields = new FormData(form);
-    const organizationId = String(fields.get('organization_id') || '');
-    const establishmentId = String(fields.get('establishment_id') || '');
-    const name = String(fields.get('device_name') || '').trim();
-    const timezone = String(fields.get('timezone') || 'Europe/Paris');
-    if (!organizationId || !establishmentId || name.length < 2) throw appError('Renseignez l’entreprise, l’établissement et le nom de la tablette.');
-    if (!managerCan('pointage.edit_schedule', organizationId)) throw appError('Le droit de modifier les horaires de la pointeuse est requis.');
-    state.busy = true;
-    state.message = null;
-    render();
-    try {
-      const secret = bytesToBase64(randomBytes(32)).replace(/[+/=]/g, (character) => ({ '+': '-', '/': '_', '=': '' }[character]));
-      const deviceSecretHash = await sha256Hex(secret);
-      const response = await callRpc('register_time_clock_device', {
-        p_organization_id: organizationId,
-        p_establishment_id: establishmentId,
-        p_name: name,
-        p_device_secret_hash: deviceSecretHash,
-        p_timezone: timezone
-      });
-      await storeDevice({
-        id: response.id,
-        organization_id: organizationId,
-        establishment_id: establishmentId,
-        name: response.name || name,
-        status: response.status || 'active',
-        timezone,
-        secret,
-        configuredAt: nowIso()
-      });
-      await refreshDeviceCache({ render: false });
-      await loadManagerEmployees(organizationId, establishmentId);
-      state.message = { kind: 'ok', text: 'Tablette associée. Créez maintenant les codes individuels.' };
-      state.screen = 'manager-console';
-    } catch (error) {
-      state.message = { kind: 'error', text: errorMessage(error) };
-    } finally {
-      state.busy = false;
-      render();
-    }
-  }
-
-  async function loadManagerEmployees(organizationId, establishmentId) {
-    state.managerEmployees = asArray(await callRpc('list_time_clock_employees', {
-      p_organization_id: organizationId,
-      p_establishment_id: establishmentId
-    }));
-  }
-
-  async function loadManagerDevices(organizationId) {
-    state.setupOrganizationId = organizationId;
-    state.managerDevices = asArray(await callRpc('list_time_clock_devices', { p_organization_id: organizationId }));
-  }
-
-  async function setEmployeePin(form) {
-    const fields = new FormData(form);
-    const employeeId = String(fields.get('employee_id') || '');
-    const pin = String(fields.get('pin') || '');
-    const confirmation = String(fields.get('confirm_pin') || '');
-    if (!managerCan('pointage.edit_schedule', state.device?.organization_id)) throw appError('Le droit de modifier les horaires de la pointeuse est requis.');
-    if (!/^\d{6}$/.test(pin)) throw appError('Le code doit contenir exactement six chiffres.');
-    if (pin !== confirmation) throw appError('Les deux codes ne correspondent pas.');
-    const salt = bytesToBase64(randomBytes(16));
-    state.busy = true;
-    state.message = null;
-    render();
-    try {
-      const offlineHash = await deriveOfflineHash(pin, salt, PBKDF2_ITERATIONS);
-      await callRpc('set_employee_time_clock_pin', {
-        p_organization_id: state.device.organization_id,
-        p_employee_id: employeeId,
-        p_pin: pin,
-        p_offline_salt: salt,
-        p_offline_hash: offlineHash,
-        p_offline_iterations: PBKDF2_ITERATIONS
-      });
-      await refreshDeviceCache({ render: false });
-      await loadManagerEmployees(state.device.organization_id, state.device.establishment_id);
-      state.message = { kind: 'ok', text: 'Code personnel enregistré.' };
-      state.pinTargetId = null;
-      state.screen = 'manager-console';
-    } catch (error) {
-      state.message = { kind: 'error', text: errorMessage(error) };
-    } finally {
-      state.busy = false;
-      render();
-    }
-  }
-
-  async function changeDeviceStatus(status, deviceId) {
-    const targetId = deviceId || state.device?.id;
-    if (!targetId) return;
-    const organizationId = state.device?.id === targetId ? state.device.organization_id : state.setupOrganizationId;
-    const requiredPermission = status === 'active' ? 'pointage.reactivate_device' : 'pointage.suspend_device';
-    if (!managerCan(requiredPermission, organizationId)) {
-      state.message = { kind: 'error', text: 'Vous ne disposez pas du droit requis pour changer le statut de cette tablette.' };
-      return render();
-    }
-    state.busy = true;
-    state.message = null;
-    render();
-    try {
-      const response = await callRpc('set_time_clock_device_status', { p_device_id: targetId, p_status: status });
-      if (state.device?.id === targetId) await storeDevice({ ...state.device, status: response.status });
-      if (state.screen === 'device-list') await loadManagerDevices(state.setupOrganizationId);
-      state.message = { kind: 'ok', text: response.status === 'active' ? 'Tablette réactivée.' : 'Tablette mise en pause.' };
-    } catch (error) {
-      state.message = { kind: 'error', text: errorMessage(error) };
-    } finally {
-      state.busy = false;
-      render();
-    }
+  async function loadManagerData() {
+    const { data, error } = await api.from('establishments').select('id,name').eq('organization_id', state.organizationId).eq('is_active', true).order('name');
+    if (error) throw error;
+    state.establishments = asArray(data);
+    state.devices = asArray(await callRpc('list_time_clock_devices', { p_organization_id: state.organizationId }));
   }
 
   async function closeManager() {
-    try { await api.auth.signOut({ scope: 'local' }); } catch (_) { /* Session memory only. */ }
-    state.manager = null;
-    state.managerEmployees = [];
-    state.managerDevices = [];
-    state.pinTargetId = null;
-    state.verified = null;
-    state.pin = '';
-    state.screen = state.device ? 'kiosk' : 'loading';
-    render();
+    try { await api.auth.signOut({ scope: 'local' }); } catch (_) { /* Session en mémoire uniquement. */ }
+    state.contexts = []; state.manager = null; state.activation = null; state.devices = [];
+    state.screen = state.device ? 'kiosk' : 'activation';
   }
 
-  function startManager(purpose) {
-    state.managerPurpose = purpose;
-    state.message = null;
-    state.screen = 'manager-login';
-    render();
-  }
-
-  async function handleClick(event) {
-    const target = event.target instanceof Element ? event.target.closest('[data-tc-action]') : null;
-    if (!target || state.busy) return;
-    const action = target.dataset.tcAction;
-    if (action === 'start-pair') {
-      if (state.manager?.contexts?.length) {
-        const pairContexts = activeManagerContexts(state.manager.contexts, ['pointage.edit_schedule', 'pointage.manage_settings']);
-        if (!pairContexts.length) {
-          state.message = { kind: 'error', text: 'Le droit de modifier les horaires de la pointeuse est requis.' };
-          return render();
-        }
-        state.managerPurpose = 'pair';
-        state.setupOrganizationId = pairContexts[0].organization_id;
-        state.busy = true;
-        render();
-        try { await loadSetupEstablishments(state.setupOrganizationId); state.screen = 'pair-device'; }
-        catch (error) { state.message = { kind: 'error', text: errorMessage(error) }; }
-        finally { state.busy = false; render(); }
-        return;
-      }
-      return startManager('pair');
-    }
-    if (action === 'start-device-management') return startManager('manage');
-    if (action === 'open-manager') return startManager(state.device ? 'manage' : 'pair');
-    if (action === 'back-kiosk') { state.message = null; state.pin = ''; state.verified = null; state.screen = state.device ? 'kiosk' : 'loading'; return render(); }
-    if (action === 'close-manager') return closeManager();
-    if (action === 'select-employee') {
-      if (!deviceCanBadge()) {
-        state.message = { kind: 'error', text: 'Cette tablette a été désactivée. Contactez un manager.' };
-        return render();
-      }
-      state.selectedEmployeeId = target.dataset.tcEmployee || null;
-      state.pin = ''; state.message = null; state.screen = 'pin-entry'; return render();
-    }
-    if (action === 'pin-key') {
-      const key = target.dataset.tcKey;
-      if (key === 'cancel') { state.pin = ''; state.message = null; state.screen = 'kiosk'; return render(); }
-      if (key === 'back') { state.pin = state.pin.slice(0, -1); return render(); }
-      if (/^\d$/.test(key) && state.pin.length < 6) {
-        state.pin += key;
-        render();
-        if (state.pin.length === 6) await verifyPinAndContinue();
-      }
-      return;
-    }
-    if (action === 'cancel-verified') { state.verified = null; state.pin = ''; state.screen = 'kiosk'; return render(); }
-    if (action === 'record-badge') return recordBadge(target.dataset.tcEvent);
-    if (action === 'set-pin') {
-      if (!managerCan('pointage.edit_schedule', state.device?.organization_id)) return;
-      state.pinTargetId = target.dataset.tcEmployee || null; state.message = null; state.screen = 'set-pin'; return render();
-    }
-    if (action === 'back-manager') { state.pinTargetId = null; state.message = null; state.screen = 'manager-console'; return render(); }
-    if (action === 'toggle-device-status') return changeDeviceStatus(target.dataset.tcStatus);
-    if (action === 'manage-device-status') return changeDeviceStatus(target.dataset.tcStatus, target.dataset.tcDevice);
-    if (action === 'show-device-list') {
-      state.setupOrganizationId = state.device?.organization_id || state.manager?.contexts?.[0]?.organization_id || '';
-      state.busy = true;
-      render();
-      try { await loadManagerDevices(state.setupOrganizationId); state.screen = 'device-list'; }
-      catch (error) { state.message = { kind: 'error', text: errorMessage(error) }; }
-      finally { state.busy = false; render(); }
-      return;
-    }
+  async function withBusy(work) {
+    if (state.busy) return;
+    state.busy = true; state.message = null; render();
+    try { await work(); }
+    catch (error) { state.message = { kind: 'error', text: errorMessage(error) }; }
+    finally { state.busy = false; render(); }
   }
 
   async function handleSubmit(event) {
     const form = event.target;
     if (!(form instanceof HTMLFormElement)) return;
-    if (!['tc-manager-login', 'tc-pair-device', 'tc-set-pin'].includes(form.id)) return;
+    if (!['activation-form','manager-login','activation-code','pin-invitation-form'].includes(form.id)) return;
     event.preventDefault();
-    try {
-      if (form.id === 'tc-manager-login') await managerLogin(form);
-      if (form.id === 'tc-pair-device') await pairDevice(form);
-      if (form.id === 'tc-set-pin') await setEmployeePin(form);
-    } catch (error) {
-      state.message = { kind: 'error', text: errorMessage(error) };
-      state.busy = false;
-      render();
-    }
+    await withBusy(async () => {
+      if (form.id === 'activation-form') await activate(form);
+      if (form.id === 'manager-login') await managerLogin(form);
+      if (form.id === 'activation-code') {
+        const fields = new FormData(form);
+        state.activation = await callRpc('create_time_clock_activation_code', {
+          p_organization_id: state.organizationId, p_establishment_id: String(fields.get('establishment_id')), p_ttl_minutes: 10
+        });
+      }
+      if (form.id === 'pin-invitation-form') {
+        const fields = new FormData(form);
+        const pin = String(fields.get('pin') || '');
+        if (pin !== String(fields.get('confirmation') || '')) throw appError('Les deux codes ne correspondent pas.');
+        await callRpc('consume_employee_time_clock_pin_invitation', { p_token: state.invitationToken, p_pin: pin });
+        state.message = { kind: 'ok', text: 'Votre code a été enregistré. Ce lien est maintenant invalidé.' };
+        form.reset();
+      }
+    });
   }
 
-  async function handleChange(event) {
-    const target = event.target;
-    if (!(target instanceof HTMLSelectElement) || !['setup-organization', 'device-list-organization'].includes(target.dataset.tcChange)) return;
-    state.busy = true;
-    state.message = null;
-    render();
-    try {
-      if (target.dataset.tcChange === 'setup-organization') await loadSetupEstablishments(target.value);
-      else await loadManagerDevices(target.value);
+  async function handleClick(event) {
+    const target = event.target instanceof Element ? event.target.closest('[data-action]') : null;
+    if (!target || state.busy) return;
+    const action = target.dataset.action;
+    if (action === 'manage') { state.screen = 'manager-login'; state.message = null; return render(); }
+    if (action === 'cancel-manager') { state.screen = state.device ? 'kiosk' : 'activation'; return render(); }
+    if (action === 'close-manager') return withBusy(closeManager);
+    if (action === 'cancel') { state.verified = null; state.pin = ''; state.screen = 'kiosk'; return render(); }
+    if (action === 'pin-key') {
+      const key = target.dataset.key;
+      if (key === 'clear') state.pin = '';
+      else if (key === 'validate') return withBusy(verifyPin);
+      else if (/^\d$/.test(key) && state.pin.length < 6) state.pin += key;
+      return render();
     }
-    catch (error) { state.message = { kind: 'error', text: errorMessage(error) }; }
-    finally { state.busy = false; render(); }
-  }
-
-  function handleInput(event) {
-    const input = event.target;
-    if (!(input instanceof HTMLInputElement) || input.id !== 'tc-search') return;
-    state.search = input.value;
-    render();
-    byId('tc-search')?.focus();
+    if (action === 'badge') return withBusy(() => recordBadge(target.dataset.event));
+    if (action === 'copy') { await navigator.clipboard.writeText(target.dataset.copy || ''); state.message = { kind: 'ok', text: 'Copié.' }; return render(); }
+    if (action === 'hide-secret') { state.oneTimeSecret = null; return render(); }
+    if (action === 'print-secret') return window.print();
+    if (action === 'back-manager') { state.oneTimeSecret = null; state.screen = 'manager'; return render(); }
+    if (action === 'employees') return withBusy(async () => {
+      state.selectedDevice = state.devices.find((device) => device.id === target.dataset.device);
+      state.employees = asArray(await callRpc('list_time_clock_employees', {
+        p_organization_id: state.organizationId, p_establishment_id: state.selectedDevice.establishment_id
+      }));
+      state.screen = 'employees';
+    });
+    if (action === 'generate-pin') return withBusy(async () => {
+      const result = await callRpc('generate_employee_time_clock_pin', { p_organization_id: state.organizationId, p_employee_id: target.dataset.employee });
+      state.oneTimeSecret = { kind: 'pin', label: 'Code visible une seule fois', value: result.pin };
+      state.employees = asArray(await callRpc('list_time_clock_employees', { p_organization_id: state.organizationId, p_establishment_id: state.selectedDevice.establishment_id }));
+    });
+    if (action === 'invite-pin') return withBusy(async () => {
+      const result = await callRpc('create_employee_time_clock_pin_invitation', { p_organization_id: state.organizationId, p_employee_id: target.dataset.employee });
+      const url = new URL('./pointeuse.html', window.location.href); url.search = ''; url.searchParams.set('clock-pin', result.token);
+      state.oneTimeSecret = { kind: 'link', label: 'Lien sécurisé valable 24 heures', value: url.href };
+    });
+    if (action === 'send-pin-invite') return withBusy(async () => {
+      const { data, error } = await api.functions.invoke('send-clock-pin-invitation', {
+        body: { organization_id: state.organizationId, employee_id: target.dataset.employee }
+      });
+      if (error) throw error;
+      if (data?.accept_url) state.oneTimeSecret = { kind: 'link', label: data.warning || 'Lien sécurisé valable 24 heures', value: data.accept_url };
+      state.message = { kind: data?.emailed ? 'ok' : '', text: data?.emailed ? 'Invitation envoyée par e-mail.' : (data?.warning || 'Lien créé pour remise manuelle.') };
+    });
+    if (action === 'device-history') return withBusy(async () => {
+      const history = asArray(await callRpc('list_time_clock_device_history', { p_device_id: target.dataset.device }));
+      const lines = history.slice(0, 30).map((item) => `${new Date(item.created_at).toLocaleString('fr-FR')} · ${item.action}`).join('\n');
+      alert(lines || 'Aucun événement d’audit pour cette pointeuse.');
+    });
+    if (action === 'status-device') return withBusy(async () => {
+      await callRpc('set_time_clock_device_status', { p_device_id: target.dataset.device, p_status: target.dataset.status, p_reason: null });
+      await loadManagerData();
+    });
+    if (action === 'revoke-device') {
+      const reason = prompt('Motif de la révocation (facultatif) :') || '';
+      return withBusy(async () => { await callRpc('set_time_clock_device_status', { p_device_id: target.dataset.device, p_status: 'revoked', p_reason: reason }); await loadManagerData(); });
+    }
+    if (action === 'rename-device') {
+      const device = state.devices.find((item) => item.id === target.dataset.device);
+      const name = prompt('Nom de la pointeuse :', device?.name || '');
+      if (!name) return;
+      const location = prompt('Emplacement (facultatif) :', device?.location || '') || '';
+      return withBusy(async () => { await callRpc('update_time_clock_device', { p_device_id: device.id, p_name: name, p_location: location, p_description: device.description || null }); await loadManagerData(); });
+    }
+    if (action === 'remove-device') {
+      const device = state.devices.find((item) => item.id === target.dataset.device);
+      const count = Number(device?.event_count || 0);
+      const text = count ? `Cette pointeuse a enregistré ${count} pointage(s). Elle sera désactivée et archivée, mais son historique sera conservé.` : 'Cette pointeuse n’a enregistré aucun pointage. Elle peut être supprimée définitivement.';
+      if (!confirm(text)) return;
+      return withBusy(async () => { const result = await callRpc('delete_or_archive_time_clock_device', { p_device_id: device.id }); await loadManagerData(); state.message = { kind: 'ok', text: result.result === 'archived' ? 'Pointeuse archivée, historique conservé.' : 'Pointeuse supprimée.' }; });
+    }
   }
 
   async function initialize() {
     try {
-      if (!window.crypto?.subtle) throw appError('Cette tablette doit utiliser HTTPS ou localhost pour activer la sécurité cryptographique.');
-      await loadLocalState();
-      state.screen = state.device ? 'kiosk' : 'unconfigured';
+      if (!crypto?.subtle || !crypto?.randomUUID) throw appError('HTTPS ou localhost est requis pour sécuriser ce terminal.');
+      if (state.invitationToken) { state.screen = 'pin-invitation'; return render(); }
+      await loadDevice();
+      state.screen = params.get('mode') === 'manage' ? 'manager-login' : state.device ? 'kiosk' : 'activation';
       render();
       if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => undefined);
-      if (state.device && navigator.onLine) void syncDevice();
+      if (state.device && navigator.onLine) {
+        try { await refreshDevice(); }
+        catch (error) {
+          state.device.status = 'revoked';
+          state.message = { kind: 'error', text: errorMessage(error) };
+        }
+        render();
+      }
     } catch (error) {
-      root.className = '';
-      root.innerHTML = `<section class="tc-main"><article class="tc-dialog" style="margin:12vh auto"><h2>Pointeuse indisponible</h2><p>${escapeHtml(errorMessage(error))}</p></article></section>`;
+      setRoot(`<main class="tc-main"><section class="tc-dialog"><h1>Pointeuse indisponible</h1><p>${escapeHtml(errorMessage(error))}</p></section></main>`);
     }
   }
 
-  document.addEventListener('click', (event) => { void handleClick(event); });
   document.addEventListener('submit', (event) => { void handleSubmit(event); });
-  document.addEventListener('change', (event) => { void handleChange(event); });
-  document.addEventListener('input', handleInput);
-  window.addEventListener('online', () => { void syncDevice(); });
-  window.addEventListener('offline', () => { state.lastSyncError = null; render(); });
+  document.addEventListener('click', (event) => { void handleClick(event); });
+  document.addEventListener('change', (event) => {
+    if (event.target?.id === 'manager-org') void withBusy(async () => { state.organizationId = event.target.value; state.activation = null; await loadManagerData(); });
+  });
+  window.addEventListener('online', () => { state.message = null; if (state.device) void withBusy(refreshDevice); else render(); });
+  window.addEventListener('offline', render);
   window.setInterval(updateClock, 1000);
-  window.setInterval(() => { if (state.device && navigator.onLine) void syncDevice(); }, 90 * 1000);
+  window.setInterval(() => { if (state.device && navigator.onLine && state.screen === 'kiosk') void refreshDevice().catch(() => undefined); }, 90000);
 
   void initialize();
 }());

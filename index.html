@@ -6,6 +6,7 @@
 <title>PlanniPro — Gestion RH & Planning</title>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <link href="./plannipro-vault.css" rel="stylesheet">
+<link href="./plannipro-publications.css" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -768,6 +769,54 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .onboarding-point{padding:5px 9px;border:1px solid var(--bd1);border-radius:99px;background:var(--off);font-size:11px;color:var(--tx2)}
 .onboarding-foot{padding:18px 24px 22px}
 @media(max-width:768px){.onboarding-modal{width:calc(100vw - 20px)}.onboarding-hero{padding:20px 18px 16px}.onboarding-body{padding:18px 18px 2px}.onboarding-foot{padding:16px 18px 18px}.onboarding-title{font-size:22px}}
+
+/* ── ERGONOMIC TOPBAR ── */
+.topbar{height:58px;overflow:visible;padding-right:12px;gap:10px}
+#wkBar{min-width:0}
+.topbar-primary-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;min-width:0;flex:0 1 auto;overflow:visible}
+.topbar-tools{position:relative;flex:0 0 auto}
+.topbar-tools>summary{list-style:none}
+.topbar-tools>summary::-webkit-details-marker{display:none}
+.topbar-tools-trigger{height:36px;display:inline-flex;align-items:center;gap:7px;padding:0 11px;border:1px solid var(--bd1);border-radius:10px;background:#fff;color:var(--tx2);font:700 11px var(--ff);cursor:pointer;box-shadow:0 1px 2px rgba(15,22,41,.03)}
+.topbar-tools-trigger svg{width:15px;height:15px}
+.topbar-tools-trigger:hover,.topbar-tools[open]>.topbar-tools-trigger{background:var(--ind-lt);border-color:var(--ind-md);color:var(--ind)}
+.topbar-tools-menu{position:absolute;right:0;top:calc(100% + 10px);z-index:1000;width:290px;padding:8px;border:1px solid var(--bd1);border-radius:15px;background:#fff;box-shadow:0 20px 48px rgba(15,22,41,.18)}
+.topbar-tools-menu:before{content:"";position:absolute;right:24px;top:-6px;width:10px;height:10px;border-left:1px solid var(--bd1);border-top:1px solid var(--bd1);background:#fff;transform:rotate(45deg)}
+.topbar-tool-item,.topbar-history-slot button{width:100%;display:grid;grid-template-columns:34px minmax(0,1fr);align-items:center;gap:10px;padding:9px;border:0;border-radius:10px;background:transparent;color:var(--tx1);font-family:var(--ff);text-align:left;cursor:pointer}
+.topbar-tool-item:hover,.topbar-history-slot button:hover{background:var(--bg)}
+.topbar-tool-item:disabled,.topbar-history-slot button:disabled{opacity:.45;cursor:not-allowed}
+.topbar-tool-icon{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;background:var(--off);color:var(--tx2);border:1px solid var(--bd1)}
+.topbar-tool-icon svg{width:16px;height:16px}
+.topbar-tool-copy{min-width:0;display:grid;gap:2px}
+.topbar-tool-copy strong{font-size:11.5px;line-height:1.15}
+.topbar-tool-copy small{font-size:10px;line-height:1.25;color:var(--tx3);font-weight:500}
+.topbar-menu-separator{height:1px;margin:6px 4px;background:var(--bd1)}
+.topbar-history-slot:empty{display:none}
+.topbar-account-slot{display:flex;align-items:center;min-width:0;flex:0 0 auto}
+.topbar-account-slot .pp-account-lines{display:none}
+.topbar-account-slot .pp-account-button{max-width:none}
+.topbar-account-slot .pp-account-menu{right:0}
+.topbar-account-slot .pp-logout-button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.topbar-account-slot .pp-logout-button svg{width:15px;height:15px;flex:0 0 auto}
+.topbar-primary-actions .pp-publication-slot{min-width:0}
+
+@media (max-width:1180px){
+  .topbar-primary-actions .pp-publication-status{display:none}
+  .topbar-account-slot .pp-logout-button span{display:none}
+  .topbar-account-slot .pp-logout-button{width:36px;height:36px;padding:0;justify-content:center}
+}
+@media (max-width:768px){
+  .topbar{height:58px;overflow:visible;padding-right:7px;gap:4px}
+  #wkBar{max-width:calc(100vw - 238px)}
+  .topbar>.spacer{min-width:0}
+  .topbar>.topbar-primary-actions{gap:4px;overflow:visible}
+  .topbar-tools-trigger{width:36px;padding:0;justify-content:center}
+  .topbar-tools-trigger span{display:none}
+  .topbar-tools-menu{position:fixed;right:8px;top:64px;width:min(310px,calc(100vw - 16px));max-height:calc(100dvh - 76px);overflow:auto}
+  .topbar-tools-menu:before{display:none}
+  .topbar-account-slot .pp-account-button{width:36px;height:36px;padding:3px;justify-content:center}
+  .topbar-account-slot .pp-logout-button{width:36px;height:36px;padding:0;justify-content:center}
+}
 </style>
 </head>
 <body>
@@ -832,47 +881,48 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       </button>
     </div>
     <div class="spacer"></div>
-    <!-- Droite : actions — icones + labels courts -->
-    <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
-      <!-- Modeles -->
-      <button class="tb-icon-btn" onclick="om('ovl-tmpl')" title="Modeles de shifts">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-        <span>Modeles</span>
-      </button>
-      <!-- Import -->
-      <button class="tb-icon-btn" onclick="om('ovl-import')" id="importBtn" title="Importer des employes">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span>Import</span>
-      </button>
-      <!-- CA -->
-      <button class="tb-icon-btn" onclick="openCAModal()" id="caBtn" title="Objectif CA">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        <span>CA</span>
-      </button>
-      <!-- Separateur -->
-      <div style="width:1px;height:22px;background:var(--bd1);margin:0 2px"></div>
-      <!-- Export CSV -->
-      <button class="tb-icon-btn" onclick="exportCSV()" data-pp-permission="planning.export" title="Exporter en CSV">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span>CSV</span>
-      </button>
-      <!-- Télécharger PDF -->
-      <button class="tb-icon-btn" onclick="exportPDF()" data-pp-permission="planning.export" title="Télécharger le planning hebdomadaire en PDF" style="color:#DC2626">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span>PDF</span>
-      </button>
-      <!-- Imprimer -->
-      <button class="tb-icon-btn" onclick="printWeeklyPlanning()" data-pp-permission="planning.print" title="Imprimer le planning hebdomadaire">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-        <span>Imprimer</span>
-      </button>
-      <!-- Separateur -->
-      <div style="width:1px;height:22px;background:var(--bd1);margin:0 2px"></div>
-      <!-- Nouveau shift -->
+    <!-- Droite : seulement les actions prioritaires ; le reste est dans Outils. -->
+    <div class="topbar-primary-actions">
+      <div class="pp-publication-slot" id="planningPublicationSlot"></div>
       <button class="btn btn-primary btn-sm" id="mainBtn" onclick="openShiftModal(null,null)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span id="mainBtnLbl">+ Shift</span>
+        <span id="mainBtnLbl">Nouveau shift</span>
       </button>
+      <details class="topbar-tools" id="topbarTools">
+        <summary class="topbar-tools-trigger" aria-label="Ouvrir les outils du planning" title="Outils du planning">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+          <span>Outils</span>
+        </summary>
+        <div class="topbar-tools-menu" id="topbarToolsMenu" role="menu" aria-label="Outils du planning">
+          <button class="topbar-tool-item" onclick="om('ovl-tmpl')" title="Modèles de shifts" role="menuitem">
+            <span class="topbar-tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>
+            <span class="topbar-tool-copy"><strong>Modèles</strong><small>Réutiliser des horaires fréquents</small></span>
+          </button>
+          <button class="topbar-tool-item" onclick="om('ovl-import')" id="importBtn" title="Importer des employés" role="menuitem">
+            <span class="topbar-tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+            <span class="topbar-tool-copy"><strong>Importer</strong><small>Ajouter des employés depuis un fichier</small></span>
+          </button>
+          <button class="topbar-tool-item" onclick="openCAModal()" id="caBtn" title="Objectif de chiffre d'affaires" role="menuitem">
+            <span class="topbar-tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+            <span class="topbar-tool-copy"><strong>Objectif CA</strong><small>Comparer activité et masse salariale</small></span>
+          </button>
+          <div class="topbar-history-slot" id="planningPublicationHistorySlot"></div>
+          <div class="topbar-menu-separator"></div>
+          <button class="topbar-tool-item" onclick="exportCSV()" data-pp-permission="planning.export" title="Exporter en CSV" role="menuitem">
+            <span class="topbar-tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+            <span class="topbar-tool-copy"><strong>Exporter en CSV</strong><small>Données tabulaires du planning</small></span>
+          </button>
+          <button class="topbar-tool-item" onclick="exportPDF()" data-pp-permission="planning.export" title="Télécharger le planning en PDF" role="menuitem">
+            <span class="topbar-tool-icon" style="color:#DC2626"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+            <span class="topbar-tool-copy"><strong>Télécharger le PDF</strong><small>Planning hebdomadaire prêt à partager</small></span>
+          </button>
+          <button class="topbar-tool-item" onclick="printWeeklyPlanning()" data-pp-permission="planning.print" title="Imprimer le planning" role="menuitem">
+            <span class="topbar-tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></span>
+            <span class="topbar-tool-copy"><strong>Imprimer</strong><small>Ouvrir la mise en page d'impression</small></span>
+          </button>
+        </div>
+      </details>
+      <div class="topbar-account-slot" id="topbarAccountSlot"></div>
     </div>
   </header>
   <div class="view act" id="view-planning">
@@ -1119,6 +1169,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
           <button class="sn-item" onclick="showSP('legal',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Conformite legale</button>
           <button class="sn-item" onclick="showSP('pay',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Paie &amp; Charges</button>
           <button class="sn-item" onclick="showSP('notif',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Alertes</button>
+          <button class="sn-item" onclick="showSP('clocks',this)" data-pp-permission="clock_devices.view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Pointeuses</button>
         </nav>
         <div class="set-panel">
           <div id="sp-sites">
@@ -1144,6 +1195,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
             <div class="sp-desc">Configuration des alertes automatiques.</div>
             <div class="toggle-row"><div class="toggle-inf"><h4>Alerte sous-effectif</h4><p>Detecte les jours avec trop peu de personnel</p></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
             <div class="toggle-row"><div class="toggle-inf"><h4>Rappel conges non valides</h4><p>Alerte si des demandes sont en attente depuis plus de 3 jours</p></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+          </div>
+          <div id="sp-clocks" style="display:none">
+            <div class="sp-title">Pointeuses</div>
+            <div class="sp-desc">Activez et gérez les terminaux de pointage autorisés de vos établissements.</div>
+            <div class="site-item"><div class="site-ico">◷</div><div class="site-inf"><div class="site-nm">Terminaux de pointage</div><div class="site-dt">Activation temporaire, révocation, archivage et codes salariés sécurisés.</div></div><button class="btn btn-primary btn-sm" onclick="openTimeClockManagement()" data-pp-permission="clock_devices.view">Gérer les pointeuses</button></div>
           </div>
         </div>
       </div>
@@ -1365,6 +1421,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
           <div class="hr-section-title">Coordonnées</div>
           <div class="fg"><label class="fl">Téléphone</label><input type="tel" class="fi" id="ePh" placeholder="06 XX XX XX XX"></div>
           <div class="fg"><label class="fl">Email</label><input type="email" class="fi" id="eEm" placeholder="prenom.nom@email.fr"></div>
+          <div class="fg" style="grid-column:1/-1"><label class="fl" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="ePlanningEmail" checked> Recevoir le planning publié par e-mail</label></div>
           <div class="fg" style="grid-column:1/-1"><label class="fl">Adresse</label><input type="text" class="fi" id="eAddr" placeholder="Numéro et voie"></div>
           <div class="fg"><label class="fl">Code postal</label><input type="text" class="fi" id="eZip" inputmode="numeric" placeholder="44000"></div>
           <div class="fg"><label class="fl">Ville</label><input type="text" class="fi" id="eCity" placeholder="Nantes"></div>
@@ -2150,8 +2207,18 @@ function fmtDate(s, opts) { return new Date(s+'T12:00:00').toLocaleDateString('f
 
 /* ─── CALC ─── */
 function hrs(s,e) {
-  const [sh,sm]=s.split(':').map(Number),[eh,em]=e.split(':').map(Number);
-  let m=(eh*60+em)-(sh*60+sm); if(m<0)m+=1440; return +(m/60).toFixed(2);
+  return planningDurationHours(s,e);
+}
+function planningDurationMinutes(start,end) {
+  const pattern=/^(?:[01]\d|2[0-3]):[0-5]\d$/;
+  if(!pattern.test(String(start||''))||!pattern.test(String(end||''))) return 0;
+  const [sh,sm]=start.split(':').map(Number),[eh,em]=end.split(':').map(Number);
+  let minutes=(eh*60+em)-(sh*60+sm);
+  if(minutes<0) minutes+=1440;
+  return minutes;
+}
+function planningDurationHours(start,end) {
+  return +(planningDurationMinutes(start,end)/60).toFixed(2);
 }
 /* Correct hours for any shift type */
 /* Absence types that are NOT paid — no hours, no cost */
@@ -2178,6 +2245,43 @@ function shiftHrs(sh) {
   const pauseH = (sh.pauseMin || 0) / 60;
   return +Math.max(0, h - pauseH).toFixed(2);
 }
+window.PlanniProPlanningTime={durationMinutes:planningDurationMinutes,durationHours:planningDurationHours,shiftHours:shiftHrs};
+
+function planningContractHours(emp,weekStart) {
+  const start=weekStart||S.weekStart;
+  const end=wkDays(start)[6];
+  const sourceAmendments=Array.isArray(emp&&emp.amendments)&&emp.amendments.length?emp.amendments:(Array.isArray(emp&&emp.planningContractAmendments)?emp.planningContractAmendments:[]);
+  const amendments=sourceAmendments
+    .filter(item=>Number.isFinite(Number(item.hours))&&item.start&&item.start<=end&&(!item.end||item.end>=start))
+    .sort((a,b)=>String(b.start).localeCompare(String(a.start)));
+  return +(amendments.length?Number(amendments[0].hours):Number(emp&&(emp.planningContractHours??emp.maxH))||CCN.refH).toFixed(2);
+}
+
+function getPlanningPublicationSnapshot() {
+  const cloud=window.PlanniProCloud;
+  const ctx=cloud&&cloud.context;
+  if(!ctx||!ctx.organization_id||!ctx.primary_establishment_id) return null;
+  const days=wkDays();
+  const site=S.sites.find(item=>String(item.cloudEstablishmentId||'')===String(ctx.primary_establishment_id));
+  const employees=activeEmps().filter(emp=>emp.cloudEmployeeId&&(
+    !emp.cloudEstablishmentId||String(emp.cloudEstablishmentId)===String(ctx.primary_establishment_id)
+  )).map(emp=>{
+    const contractHours=planningContractHours(emp,S.weekStart);
+    const shifts=S.shifts.filter(sh=>sh.empId===emp.id&&days.includes(sh.date)).map(sh=>({
+      id:String(sh.id),date:sh.date,start:sh.s||'',end:sh.e||'',start2:sh.s2||'',end2:sh.e2||'',
+      label:sh.shiftType==='abs'||sh.shiftType==='aar'?(sh.aarType||'Absence'):sh.shiftType==='task'?(sh.taskCat||'Tâche'):'',
+      note:sh.note||'',shift_type:sh.shiftType||'work',pause_minutes:Number(sh.pauseMin)||0,
+      duration_hours:shiftHrs(sh)
+    })).sort((a,b)=>`${a.date}|${a.start}|${a.end}|${a.id}`.localeCompare(`${b.date}|${b.start}|${b.end}|${b.id}`));
+    const plannedHours=+shifts.reduce((sum,shift)=>sum+shift.duration_hours,0).toFixed(2);
+    return {employee_id:emp.cloudEmployeeId,name:emp.name,role:emp.role||'',contract_hours:contractHours,
+      planned_hours:plannedHours,delta_hours:+(plannedHours-contractHours).toFixed(2),shifts};
+  }).sort((a,b)=>a.employee_id.localeCompare(b.employee_id));
+  return {schema_version:1,organization_id:ctx.organization_id,organization_name:ctx.organization_name||'',
+    establishment_id:ctx.primary_establishment_id,establishment_name:site&&site.name||'Établissement',
+    week_start:S.weekStart,week_end:days[6],employees};
+}
+window.getPlanningPublicationSnapshot=getPlanningPublicationSnapshot;
 
 
 function sCost(sh) {
@@ -2321,6 +2425,7 @@ function renderPlanning() {
     days.forEach(d=>{const{name,num}=fd(d),e=el('div','gh-day'+(d===td?' td':'')); e.innerHTML=`<div class="gh-dn">${name}</div><div class="gh-num">${num}</div>`; grid.appendChild(e);});
     const gt=el('div','gh-tot'); gt.innerHTML='<div class="gh-tot-l">Total</div>'; grid.appendChild(gt);
     const em=el('div','grid-empty'); em.innerHTML=`<h3>Aucun employé</h3><p>Ajoutez votre premier employé pour commencer</p><button class="btn btn-primary" onclick="openEmpModal()" style="margin-top:10px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Ajouter un employé</button>`; grid.appendChild(em);
+    window.PlanniProPublications?.refresh(getPlanningPublicationSnapshot());
     return;
   }
 
@@ -2339,11 +2444,13 @@ function renderPlanning() {
   // Employee rows
   emps.forEach((emp,ei)=>{
     const c=col(S.employees.indexOf(emp)), wh=empWH(emp.id);
+    const contractHours=planningContractHours(emp,S.weekStart);
+    const hourDelta=+(wh-contractHours).toFixed(2);
     const ww=+S.shifts.filter(s=>s.empId===emp.id&&days.includes(s.date)).reduce((a,s)=>a+sCost(s),0).toFixed(2);
-    const over=!isTNS(emp)&&wh>(emp.maxH||CCN.refH);
+    const over=!isTNS(emp)&&hourDelta>0.005;
     const lc=el('div','gr-emp');
     lc.innerHTML=`<div class="emp-av" style="background:${c}">${emp.name[0]}</div>
-      <div class="emp-inf"><div class="emp-nm">${emp.name}</div><div class="emp-rl">${emp.role||'—'}</div></div>
+      <div class="emp-inf"><div class="emp-nm">${emp.name}</div><div class="emp-rl">${emp.role||'—'}</div><span class="emp-contract-hours">Contrat ${contractHours.toFixed(2)}h</span></div>
       <div class="emp-acts">
         <button class="emp-act" onclick="openShiftModal('${emp.id}',null);event.stopPropagation()" title="Ajouter shift"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <button class="emp-act" onclick="openEmpModal('${emp.id}');event.stopPropagation()" title="Modifier"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
@@ -2405,7 +2512,8 @@ function renderPlanning() {
         }
       }); grid.appendChild(cell);
     });
-    const rt=el('div','gr-rt'); rt.innerHTML=`<div class="rt-h${over?' rt-ov':''}">${wh.toFixed(1)}h${over?' ⚠':''}</div><div class="rt-w${over?' rt-ov':''}">${ww.toFixed(0)} €</div>`; grid.appendChild(rt);
+    const deltaClass=Math.abs(hourDelta)<0.005?'zero':hourDelta>0?'positive':'negative';
+    const rt=el('div','gr-rt'); rt.innerHTML=`<div class="rt-h${over?' rt-ov':''}">${wh.toFixed(2)}h${over?' ⚠':''}</div><div class="rt-delta ${deltaClass}">${hourDelta>=0?'+':''}${hourDelta.toFixed(2)}h</div><div class="rt-w">${ww.toFixed(0)} €</div>`; grid.appendChild(rt);
   });
 
   // Add row
@@ -2423,6 +2531,7 @@ function renderPlanning() {
     const fc=el('div','gr-fc-day'); fc.innerHTML=dh>0?`<div class="fc-h">${dh.toFixed(1)}h</div><div class="fc-c">${dw.toFixed(0)} €</div>`:''; grid.appendChild(fc);
   });
   const ft=el('div','gr-fc-tot'); ft.innerHTML=`<div class="fc-h">${gH.toFixed(1)}h</div><div class="fc-c">${gW.toFixed(0)} €</div>`; grid.appendChild(ft);
+  window.PlanniProPublications?.refresh(getPlanningPublicationSnapshot());
 }
 
 /* ═══ RENDER — EMPLOYEES ═══ */
@@ -3248,6 +3357,13 @@ function toggleArchived() { showArchived=!showArchived; renderEmployees(); }
 function om(id){document.getElementById(id).classList.add('open');}
 function cm(id){document.getElementById(id).classList.remove('open');}
 function ooc(e,id){if(e.target===document.getElementById(id))cm(id);}
+function closeTopbarTools(){document.getElementById('topbarTools')?.removeAttribute('open');}
+document.addEventListener('click',e=>{
+  const tools=document.getElementById('topbarTools');
+  if(!tools?.open)return;
+  if(e.target.closest('#topbarToolsMenu button')||!tools.contains(e.target))closeTopbarTools();
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeTopbarTools();});
 
 /* ─── SHIFT MODAL ─── */
 /* ═══════════════════════════════════════════════════════
@@ -3623,6 +3739,7 @@ function openEmpModal(id) {
   setFormValue('eNss',identity.nss||'');
   setFormValue('ePh',emp?emp.phone||'':'');
   setFormValue('eEm',emp?emp.email||'':'');
+  document.getElementById('ePlanningEmail').checked=emp?emp.planningEmailEnabled!==false:true;
   setFormValue('eAddr',identity.address||'');
   setFormValue('eZip',identity.zip||'');
   setFormValue('eCity',identity.city||'');
@@ -3718,6 +3835,7 @@ function saveEmp() {
     contract,
     phone:document.getElementById('ePh').value.trim(),
     email:document.getElementById('eEm').value.trim(),
+    planningEmailEnabled:document.getElementById('ePlanningEmail').checked,
     site:document.getElementById('eSt').value,
     note:document.getElementById('eNo').value.trim(),
     cpSolde:tns?0:(optionalNumber('eCp')==null?25:optionalNumber('eCp')),
@@ -4063,6 +4181,13 @@ function openTimeClockApp() {
   if (!opened) window.location.assign(url);
 }
 
+function openTimeClockManagement() {
+  const url = new URL('./pointeuse.html', window.location.href);
+  url.searchParams.set('mode', 'manage');
+  const opened = window.open(url.href, '_blank', 'noopener');
+  if (!opened) window.location.assign(url.href);
+}
+
 function doPunch(type) {
   const empId=document.getElementById('punchSel').value;
   if(!empId){toast('Sélectionnez un employé','err');return;}
@@ -4290,7 +4415,7 @@ function buildWeeklyPlanningPDF() {
       out+=pdfRect(cellX,rowY,3,ROW_H,empColor);
       out+=pdfText(emp.name,cellX+9,rowY+30,7.8,true,'#172033',EMP_W-16);
       out+=pdfText(emp.role||'—',cellX+9,rowY+19,6.3,false,'#59647C',EMP_W-16);
-      out+=pdfText(isTNS(emp)?'Gérant / TNS':normalizeContract(emp.contract||'CDI'),cellX+9,rowY+8,5.8,true,isTNS(emp)?'#B45309':'#7C859E',EMP_W-16);
+      out+=pdfText((isTNS(emp)?'TNS':'Contrat')+' · '+planningContractHours(emp,S.weekStart).toFixed(2)+' h',cellX+9,rowY+8,5.8,true,isTNS(emp)?'#B45309':'#7C859E',EMP_W-16);
       cellX+=EMP_W;
 
       days.forEach((date,dayIndex)=>{
@@ -4310,9 +4435,10 @@ function buildWeeklyPlanningPDF() {
       const empShifts=S.shifts.filter(s=>s.empId===emp.id&&days.includes(s.date));
       const empHours=empShifts.reduce((sum,shift)=>sum+shiftHrs(shift),0);
       const empCost=empShifts.reduce((sum,shift)=>sum+sCost(shift),0);
+      const empDelta=empHours-planningContractHours(emp,S.weekStart);
       out+=pdfRect(cellX,rowY,TOTAL_W,ROW_H,'#FAFBFD','#D9DEEA',0.5);
       out+=pdfText(empHours.toFixed(1)+' h',cellX+5,rowY+27,7.2,true,'#172033',TOTAL_W-10);
-      out+=pdfText(isTNS(emp)?'TNS':(empCost?empCost.toFixed(0)+' €':'—'),cellX+5,rowY+14,6.1,true,isTNS(emp)?'#B45309':'#D97706',TOTAL_W-10);
+      out+=pdfText((empDelta>=0?'+':'')+empDelta.toFixed(1)+' h',cellX+5,rowY+14,6.1,true,Math.abs(empDelta)<.01?'#59647C':'#D97706',TOTAL_W-10);
       cellX+=TOTAL_W;
       out+=pdfRect(cellX,rowY,SIGN_W,ROW_H,'#FFFFFF','#D9DEEA',0.5);
       out+=pdfLine(cellX+7,rowY+13,cellX+SIGN_W-7,rowY+13,'#BCC3D2',0.45);
@@ -6784,7 +6910,8 @@ renderAll = function() {
 </script>
 <script src="./supabase-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./plannipro-cloud.js?v=logout3"></script>
+<script src="./plannipro-cloud.js?v=topbar3"></script>
 <script src="./plannipro-vault.js?v=logout3"></script>
+<script src="./plannipro-publications.js?v=topbar3"></script>
 </body>
 </html>
