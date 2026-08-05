@@ -32,6 +32,20 @@ const durationStart = html.indexOf('function planningDurationMinutes');
 const durationEnd = html.indexOf('/* Correct hours for any shift type */', durationStart);
 const durationSandbox = {};
 vm.runInNewContext(html.slice(durationStart, durationEnd), durationSandbox);
+const contractHoursStart = html.indexOf('function planningContractHours');
+const contractHoursEnd = html.indexOf('function getPlanningPublicationSnapshot', contractHoursStart);
+const contractHoursSandbox = {
+  S: { weekStart: '2026-08-03' },
+  CCN: { refH: 35 },
+  iso: (value) => typeof value === 'string' ? value.slice(0, 10) : value.toISOString().slice(0, 10),
+  dA: (value, days) => new Date(value.getTime() + days * 86400000),
+  wkDays: (start) => Array.from({ length: 7 }, (_, day) => {
+    const value = new Date(`${start}T12:00:00Z`);
+    value.setUTCDate(value.getUTCDate() + day);
+    return value.toISOString().slice(0, 10);
+  })
+};
+vm.runInNewContext(html.slice(contractHoursStart, contractHoursEnd), contractHoursSandbox);
 
 scenario('hash stable malgré l’ordre des clés', () => assert.equal(hashA, hashB));
 scenario('ordre des salariés stabilisé avant hash', () => contains(html, /\.sort\(\(a,b\)=>a\.employee_id\.localeCompare\(b\.employee_id\)\)/, 'employee order'));
@@ -43,6 +57,11 @@ scenario('horaire invalide refusé', () => assert.equal(durationSandbox.planning
 scenario('pause non payée déduite une fois', () => contains(html, /const pauseH = \(sh\.pauseMin \|\| 0\) \/ 60;[\s\S]*Math\.max\(0, h - pauseH\)/));
 scenario('double shift additionné', () => contains(html, /type==='double'.*h \+= hrs\(sh\.s2, sh\.e2\)/));
 scenario('avenant actif prioritaire', () => contains(html, /sourceAmendments[\s\S]*item\.start<=end[\s\S]*sort\(\(a,b\)=>String\(b\.start\)/));
+scenario('volume contractuel RH prioritaire sur un ancien miroir planning', () => {
+  assert.equal(contractHoursSandbox.planningContractHours({ maxH: 24, planningContractHours: 35 }, '2026-08-03'), 24);
+});
+scenario('enregistrement RH synchronise le miroir planning', () => contains(html, /maxH:weeklyContractHours,\s*planningContractHours:weeklyContractHours/));
+scenario('synchronisation cloud regenere le miroir depuis le contrat', () => contains(cloud, /employee\?\.maxH \?\? employee\?\.planningContractHours/));
 scenario('migration transactionnelle', () => { contains(sql, /^begin;/m); contains(sql, /commit;\s*$/); });
 scenario('version unique par semaine et établissement', () => contains(sql, /unique \(organization_id, establishment_id, week_start, version\)/));
 scenario('clé d’idempotence unique', () => contains(sql, /unique \(organization_id, idempotency_key\)/));
@@ -78,5 +97,5 @@ scenario('UI, Realtime, hors-ligne et cache raccordés sans fuite', () => {
   contains(css, /position:sticky;right:0/); contains(sw, /plannipro-shell-v28/);
 });
 
-assert.equal(results.length, 25);
-console.log(`\n${results.length}/25 scénarios de publication vérifiés.`);
+assert.equal(results.length, 28);
+console.log(`\n${results.length}/28 scénarios de publication vérifiés.`);
