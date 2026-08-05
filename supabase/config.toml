@@ -1,5 +1,11 @@
 project_id = "pkviymixsxwtwrarqomi"
 
+[auth]
+enable_signup = false
+
+[functions.create-company]
+verify_jwt = true
+
 [functions.invite-user]
 verify_jwt = false
 

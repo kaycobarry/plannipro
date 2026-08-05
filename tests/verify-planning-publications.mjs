@@ -94,7 +94,7 @@ scenario('UI, Realtime, hors-ligne et cache raccordés sans fuite', () => {
   contains(ui, /removeChannel\(state\.channel\)/); contains(cloud, /PlanniProPublications\?\.shutdown/);
   contains(ui, /planningPublicationHistorySlot/); contains(html, /id="topbarTools"/);
   contains(html, /id="topbarAccountSlot"/); contains(cloud, /getElementById\('topbarAccountSlot'\)/);
-  contains(css, /position:sticky;right:0/); contains(sw, /plannipro-shell-v28/);
+  contains(css, /position:sticky;right:0/); contains(sw, /plannipro-shell-v29/);
 });
 
 assert.equal(results.length, 28);
