@@ -764,7 +764,7 @@
     });
     // Le volume hebdomadaire nécessaire au planning n'expose ni salaire ni
     // contenu contractuel : seuls les nombres et dates utiles au calcul sont publics.
-    publicData.planningContractHours = Number(employee?.planningContractHours ?? employee?.maxH) || 35;
+    publicData.planningContractHours = Number(employee?.maxH ?? employee?.planningContractHours) || 35;
     const planningAmendments = Array.isArray(employee?.amendments) && employee.amendments.length
       ? employee.amendments
       : (Array.isArray(employee?.planningContractAmendments) ? employee.planningContractAmendments : []);
