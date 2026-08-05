@@ -19,8 +19,7 @@ Deno.serve(async (request) => {
   const url = Deno.env.get("SUPABASE_URL");
   const publishableKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const appUrl = Deno.env.get("APP_URL");
-  if (!url || !publishableKey || !serviceRoleKey || !appUrl) {
+  if (!url || !publishableKey || !serviceRoleKey) {
     return json({ error: "Missing required Edge Function secrets" }, 500, request);
   }
 
@@ -47,32 +46,39 @@ Deno.serve(async (request) => {
     return json({ error: "Invalid company or administrator information" }, 400, request);
   }
 
-  // Auth signup provides Supabase's e-mail confirmation and rate limiting. The
-  // privileged client is used only afterwards to set immutable app_metadata;
-  // neither its key nor the Auth tokens are ever returned to the browser.
-  const signupClient = createClient(url, publishableKey, {
+  const authorization = request.headers.get("Authorization") ?? "";
+  if (!authorization.startsWith("Bearer ")) {
+    return json({ error: "Authentication required" }, 401, request);
+  }
+
+  // The platform validates the JWT before the handler runs. The scoped client
+  // then performs the independent platform-administrator authorization check.
+  const callerClient = createClient(url, publishableKey, {
+    global: { headers: { Authorization: authorization } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: signup, error: signupError } = await signupClient.auth.signUp({
-    email,
-    password,
-    options: {
-      emailRedirectTo: appUrl,
-      data: { full_name: `${firstName} ${lastName}` },
-    },
-  });
-  if (signupError) return json({ error: signupError.message }, 400, request);
 
-  // Supabase can deliberately return an obfuscated user for an existing e-mail.
-  // An empty identities array must never be promoted to company creator.
-  if (!signup.user || signup.user.identities?.length === 0) {
-    return json({ error: "This email cannot be used to create a new company" }, 409, request);
+  const token = authorization.slice("Bearer ".length).trim();
+  const { data: caller, error: callerError } = await callerClient.auth.getUser(token);
+  if (callerError || !caller.user) return json({ error: "Authentication required" }, 401, request);
+
+  const { data: platformAdministrator, error: authorizationError } =
+    await callerClient.rpc("is_platform_administrator");
+  if (authorizationError || platformAdministrator !== true) {
+    return json({ error: "Only the PlanniPro platform administrator can create a company" }, 403, request);
   }
 
   const admin = createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { error: metadataError } = await admin.auth.admin.updateUserById(signup.user.id, {
+
+  // Auth users are created through the server administration API, so disabling
+  // public Supabase signups does not block this controlled provisioning flow.
+  const { data: created, error: createError } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: `${firstName} ${lastName}` },
     app_metadata: {
       plannipro_company_creator: true,
       plannipro_company_setup: {
@@ -83,15 +89,15 @@ Deno.serve(async (request) => {
       },
     },
   });
-  if (metadataError) {
-    // The account was created during this request and has no application data.
-    // Best-effort cleanup prevents an unusable orphan Auth account.
-    await admin.auth.admin.deleteUser(signup.user.id, false);
-    return json({ error: "Unable to authorize company creation" }, 500, request);
+  if (createError || !created.user) {
+    const status = /already|registered|exists/i.test(createError?.message ?? "") ? 409 : 400;
+    return json({ error: status === 409
+      ? "This email cannot be used to create a new company"
+      : "Unable to create the company administrator" }, status, request);
   }
 
   return json({
     created: true,
-    confirmation_required: !signup.session,
+    confirmation_required: false,
   }, 201, request);
 });

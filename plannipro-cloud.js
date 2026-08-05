@@ -70,6 +70,7 @@
     lastError: null,
     realtimeChannel: null,
     planningPublicationsAvailable: false,
+    platformAdmin: false,
     usePrivateCache: () => Boolean(App.session && App.context),
     can(module, action = 'view') {
       if (!App.context || !Array.isArray(App.context.permissions)) return false;
@@ -278,10 +279,10 @@
     const isReset = mode === 'reset';
     const isUpdate = mode === 'update-password';
     const isInvite = mode === 'invite-password';
-    const copy = isCompany ? 'Créez une nouvelle organisation indépendante. Les collaborateurs la rejoindront uniquement sur invitation.' : isReset ? 'Nous vous enverrons un lien de récupération sécurisé.' : isInvite ? 'Votre invitation est valide. Choisissez maintenant votre mot de passe pour activer votre accès.' : isUpdate ? 'Choisissez un mot de passe robuste pour protéger votre espace.' : 'Connectez-vous pour charger uniquement les données auxquelles votre profil a accès.';
+    const copy = isCompany ? 'Création réservée au Super Administrateur PlanniPro. Le nouvel administrateur pourra ensuite inviter ses collaborateurs.' : isReset ? 'Nous vous enverrons un lien de récupération sécurisé.' : isInvite ? 'Votre invitation est valide. Choisissez maintenant votre mot de passe pour activer votre accès.' : isUpdate ? 'Choisissez un mot de passe robuste pour protéger votre espace.' : 'Connectez-vous pour charger uniquement les données auxquelles votre profil a accès.';
     const companyFields = isCompany ? '<label>Nom de l’entreprise<input name="organization_name" required maxlength="120" autocomplete="organization"></label><label>Nom du premier établissement<input name="establishment_name" required maxlength="120"></label><label>Prénom de l’administrateur<input name="first_name" required maxlength="80" autocomplete="given-name"></label><label>Nom de l’administrateur<input name="last_name" required maxlength="80" autocomplete="family-name"></label>' : '';
     node.hidden = false;
-    node.innerHTML = `<div class="pp-auth-card"><div class="pp-auth-brand">Planni<b>Pro</b></div><p class="pp-auth-kicker">${copy}</p>${message ? '<p class="pp-auth-note' + (error ? ' err' : '') + '">' + escapeHtml(message) + '</p>' : ''}<form class="pp-auth-form" id="pp-auth-form" data-mode="${mode}">${companyFields}${!isUpdate && !isInvite ? '<label>Adresse e-mail<input name="email" type="email" autocomplete="email" required></label>' : ''}${!isReset ? '<label>Mot de passe<input name="password" type="password" autocomplete="' + (isCompany || isUpdate || isInvite ? 'new-password' : 'current-password') + '" minlength="8" required></label>' : ''}${isCompany || isInvite ? '<label>Confirmer le mot de passe<input name="password_confirmation" type="password" autocomplete="new-password" minlength="8" required></label>' : ''}<button class="pp-auth-submit" type="submit">${isCompany ? 'Créer l’entreprise' : isReset ? 'Envoyer le lien' : isInvite ? 'Activer mon accès' : isUpdate ? 'Mettre à jour le mot de passe' : 'Se connecter'}</button></form><div class="pp-auth-links">${mode === 'login' ? '<button class="pp-auth-link" data-pp-auth-mode="reset" type="button">Mot de passe oublié ?</button><button class="pp-auth-link" data-pp-auth-mode="company" type="button">Créer une entreprise</button>' : ''}${!isInvite && mode !== 'login' ? '<button class="pp-auth-link" data-pp-auth-mode="login" type="button">Retour à la connexion</button>' : ''}</div></div>`;
+    node.innerHTML = `<div class="pp-auth-card"><div class="pp-auth-brand">Planni<b>Pro</b></div><p class="pp-auth-kicker">${copy}</p>${message ? '<p class="pp-auth-note' + (error ? ' err' : '') + '">' + escapeHtml(message) + '</p>' : ''}<form class="pp-auth-form" id="pp-auth-form" data-mode="${mode}">${companyFields}${!isUpdate && !isInvite ? '<label>Adresse e-mail<input name="email" type="email" autocomplete="email" required></label>' : ''}${!isReset ? '<label>' + (isCompany ? 'Mot de passe initial de l’administrateur' : 'Mot de passe') + '<input name="password" type="password" autocomplete="' + (isCompany || isUpdate || isInvite ? 'new-password' : 'current-password') + '" minlength="8" required></label>' : ''}${isCompany || isInvite ? '<label>Confirmer le mot de passe<input name="password_confirmation" type="password" autocomplete="new-password" minlength="8" required></label>' : ''}<button class="pp-auth-submit" type="submit">${isCompany ? 'Créer l’entreprise' : isReset ? 'Envoyer le lien' : isInvite ? 'Activer mon accès' : isUpdate ? 'Mettre à jour le mot de passe' : 'Se connecter'}</button></form><div class="pp-auth-links">${mode === 'login' ? '<button class="pp-auth-link" data-pp-auth-mode="reset" type="button">Mot de passe oublié ?</button>' : ''}${!isInvite && mode !== 'login' ? '<button class="pp-auth-link" data-pp-auth-mode="login" type="button">Retour à la connexion</button>' : ''}</div></div>`;
     node.querySelector('input')?.focus();
   }
 
@@ -317,6 +318,7 @@
       return;
     }
     if (mode === 'company') {
+      if (!App.session || !App.platformAdmin) throw new Error('Seul le Super Administrateur PlanniPro peut créer une entreprise.');
       if (password !== String(fields.get('password_confirmation') || '')) throw new Error('Les mots de passe ne correspondent pas.');
       const { data, error } = await App.client.functions.invoke('create-company', {
         body: {
@@ -329,7 +331,11 @@
         }
       });
       if (error) throw error;
-      authForm('login', data?.confirmation_required ? 'Entreprise enregistrée. Confirmez votre e-mail, puis connectez-vous pour terminer la création.' : 'Entreprise enregistrée. Connectez-vous pour terminer la création.');
+      hideGate();
+      renderAccount();
+      safeToast(data?.confirmation_required
+        ? 'Entreprise enregistrée. La confirmation e-mail reste nécessaire.'
+        : 'Entreprise créée. Le nouvel administrateur peut maintenant se connecter.', 'ok');
       return;
     }
     if (mode === 'reset') {
@@ -369,6 +375,10 @@
     if (action === 'account-toggle') target.closest('.pp-account')?.classList.toggle('open');
     if (action === 'logout') void logout();
     if (action === 'change-password') authForm('update-password');
+    if (action === 'create-company') {
+      if (!App.platformAdmin) safeToast('Action réservée au Super Administrateur PlanniPro.', 'err');
+      else authForm('company');
+    }
     if (action === 'sync-now') void App.syncNow?.('manual');
     if (action === 'open-users') goAllowedView('users');
     if (action === 'self-service') void openSelfServiceDialog();
@@ -421,6 +431,13 @@
     return App.context;
   }
 
+  async function refreshPlatformAdministrator() {
+    if (!App.user) { App.platformAdmin = false; return false; }
+    const { data, error } = await App.client.rpc('is_platform_administrator');
+    App.platformAdmin = !error && data === true;
+    return App.platformAdmin;
+  }
+
   let activationInFlight = null;
   let activationUserId = null;
 
@@ -451,6 +468,7 @@
     App.session = session;
     App.user = session?.user || null;
     if (!session) {
+      App.platformAdmin = false;
       App.context = null;
       App.contexts = EMPTY_ARRAY;
       App.remoteReady = false;
@@ -473,6 +491,7 @@
         return;
       }
       const context = await refreshContext();
+      await refreshPlatformAdministrator();
       if (!context) {
         if (App.user?.app_metadata?.plannipro_company_creator === true) {
           await bootstrapOrganization();
@@ -493,7 +512,7 @@
           return;
         }
         await App.client.auth.signOut({ scope: 'local' });
-        authForm('login', 'Ce compte n’est rattaché à aucune entreprise. Utilisez une invitation valide ou créez une nouvelle entreprise.', true);
+        authForm('login', 'Ce compte n’est rattaché à aucune entreprise. Utilisez une invitation valide envoyée par votre administrateur.', true);
         return;
       }
       await App.client.rpc('touch_member_session');
@@ -590,6 +609,7 @@
     App.user = null;
     App.context = null;
     App.contexts = EMPTY_ARRAY;
+    App.platformAdmin = false;
     App.cacheKey = null;
     App.syncing = false;
     App.applyingRemote = false;
@@ -626,7 +646,7 @@
     const initials = (App.user.user_metadata?.full_name || App.user.email || 'U').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
     const options = App.contexts.map((context) => `<option value="${escapeHtml(context.organization_id)}" ${context.organization_id === App.context.organization_id ? 'selected' : ''}>${escapeHtml(context.organization_name)} · ${escapeHtml(context.role_label)}</option>`).join('');
     const canOpenUsers = ['view', 'invite', 'disable', 'reactivate', 'delete', 'manage_roles', 'manage_permissions'].some((action) => App.can('users', action));
-    root.innerHTML = `<button class="pp-account-button" type="button" data-pp-action="account-toggle" aria-label="Menu utilisateur"><span class="pp-account-avatar">${escapeHtml(initials)}</span><span class="pp-account-lines"><span class="pp-account-name">${escapeHtml(App.user.user_metadata?.full_name || App.user.email || 'Utilisateur')}</span><span class="pp-account-role">${escapeHtml(App.context.role_label)} · ${escapeHtml(App.context.organization_name)}</span></span></button><button class="pp-logout-button" type="button" data-pp-action="logout" aria-label="Déconnexion" title="Déconnexion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg><span>Quitter</span></button><div class="pp-account-menu"><p><strong>${escapeHtml(App.context.role_label)}</strong> · ${escapeHtml(App.context.status)}</p>${App.contexts.length > 1 ? '<select data-pp-org-switch>' + options + '</select>' : ''}<p style="margin-top:9px"><span class="pp-sync-status" data-pp-sync-status>Synchronisé</span></p><div class="pp-account-actions"><button type="button" data-pp-action="sync-now">Synchroniser maintenant</button>${App.context.employee_id ? '<button type="button" data-pp-action="self-service">Mes coordonnées</button>' : ''}<button type="button" data-pp-action="change-password">Modifier le mot de passe</button>${canOpenUsers ? '<button type="button" data-pp-action="open-users">Utilisateurs et droits d’accès</button>' : ''}<button type="button" class="danger" data-pp-action="logout">Se déconnecter</button></div></div>`;
+    root.innerHTML = `<button class="pp-account-button" type="button" data-pp-action="account-toggle" aria-label="Menu utilisateur"><span class="pp-account-avatar">${escapeHtml(initials)}</span><span class="pp-account-lines"><span class="pp-account-name">${escapeHtml(App.user.user_metadata?.full_name || App.user.email || 'Utilisateur')}</span><span class="pp-account-role">${escapeHtml(App.context.role_label)} · ${escapeHtml(App.context.organization_name)}</span></span></button><button class="pp-logout-button" type="button" data-pp-action="logout" aria-label="Déconnexion" title="Déconnexion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg><span>Quitter</span></button><div class="pp-account-menu"><p><strong>${escapeHtml(App.context.role_label)}</strong> · ${escapeHtml(App.context.status)}</p>${App.contexts.length > 1 ? '<select data-pp-org-switch>' + options + '</select>' : ''}<p style="margin-top:9px"><span class="pp-sync-status" data-pp-sync-status>Synchronisé</span></p><div class="pp-account-actions"><button type="button" data-pp-action="sync-now">Synchroniser maintenant</button>${App.context.employee_id ? '<button type="button" data-pp-action="self-service">Mes coordonnées</button>' : ''}<button type="button" data-pp-action="change-password">Modifier le mot de passe</button>${canOpenUsers ? '<button type="button" data-pp-action="open-users">Utilisateurs et droits d’accès</button>' : ''}${App.platformAdmin ? '<button type="button" data-pp-action="create-company">Créer une entreprise</button>' : ''}<button type="button" class="danger" data-pp-action="logout">Se déconnecter</button></div></div>`;
     root.querySelectorAll('[data-pp-action="logout"]').forEach((button) => button.addEventListener('click', (event) => {
       event.stopPropagation();
       void logout();

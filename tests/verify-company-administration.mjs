@@ -11,6 +11,7 @@ const cloud = read('plannipro-cloud.js');
 const createCompany = read('supabase/functions/create-company/index.ts');
 const inviteUser = read('supabase/functions/invite-user/index.ts');
 const shell = read('sw.js');
+const config = read('supabase/config.toml');
 
 const includes = (source, expected, label = expected) => {
   assert.ok(source.includes(expected), `Missing: ${label}`);
@@ -21,9 +22,19 @@ assert.match(migration, /commit;\s*$/i, 'Company migration must commit explicitl
 includes(migration, 'add column if not exists first_name', 'idempotent invitation first name');
 includes(migration, 'add column if not exists last_name', 'idempotent invitation last name');
 
-// New company + automatic first administrator.
-includes(createCompany, 'signupClient.auth.signUp', 'server-orchestrated Auth signup');
-includes(createCompany, 'admin.auth.admin.updateUserById', 'server-owned creator authorization');
+// New company + automatic first administrator, restricted to the platform owner.
+includes(migration, 'plannipro_private.platform_administrators', 'private platform administrator registry');
+includes(migration, 'and not exists (select 1 from plannipro_private.platform_administrators)', 'one-time initial platform owner seed');
+includes(migration, 'function public.is_platform_administrator()', 'platform administrator authorization RPC');
+includes(migration, 'auth.uid() is not null', 'platform administrator RPC requires authentication');
+includes(migration, 'revoke all on schema plannipro_private from public, anon, authenticated', 'private schema access revoked');
+includes(migration, 'revoke all on function public.is_platform_administrator()', 'platform RPC default execution revoked');
+includes(createCompany, 'request.headers.get("Authorization")', 'authenticated Edge Function request');
+includes(createCompany, 'callerClient.auth.getUser(token)', 'server-side JWT user validation');
+includes(createCompany, 'callerClient.rpc("is_platform_administrator")', 'platform administrator authorization');
+includes(createCompany, 'admin.auth.admin.createUser', 'server-only Auth user provisioning');
+includes(createCompany, 'email_confirm: true', 'controlled administrator account confirmation');
+assert.ok(!createCompany.includes('.auth.signUp'), 'The company endpoint must never expose public Auth signup');
 includes(createCompany, 'plannipro_company_creator: true', 'trusted company creator flag');
 includes(createCompany, 'plannipro_company_setup', 'trusted company setup payload');
 assert.ok(!createCompany.includes('access_token'), 'The public company endpoint must not return Auth tokens');
@@ -37,7 +48,11 @@ includes(cloud, "functions.invoke('create-company'", 'public company wizard uses
 includes(cloud, "rpc('bootstrap_company'", 'authorized automatic bootstrap');
 assert.ok(!cloud.includes("data-pp-auth-mode=\"signup\""), 'Free signup link must not be present');
 assert.ok(!cloud.includes('App.client.auth.signUp'), 'Browser must not create free Auth accounts');
-includes(cloud, 'Créer une entreprise', 'explicit independent-company action');
+assert.ok(!cloud.includes('data-pp-auth-mode="company"'), 'Public company creation link must not be present');
+includes(cloud, "if (!App.session || !App.platformAdmin)", 'browser company form requires platform administrator session');
+includes(cloud, "App.platformAdmin ? '<button type=\"button\" data-pp-action=\"create-company\">Créer une entreprise</button>'", 'company action visible only to platform administrator');
+includes(config, '[auth]\nenable_signup = false', 'public Supabase signup disabled in configuration');
+includes(config, '[functions.create-company]\nverify_jwt = true', 'company function requires platform JWT verification');
 
 // Invitation creation, activation, expiration, replay and tamper resistance.
 includes(inviteUser, 'create_company_invitation', 'admin invitation RPC');
@@ -67,7 +82,7 @@ includes(migration, 'alter publication supabase_realtime add table public.invita
 includes(cloud, "table: 'invitations'", 'invitation Realtime subscription');
 includes(migration, 'revoke all on function public.bootstrap_company()', 'bootstrap EXECUTE lockdown');
 includes(migration, 'grant execute on function public.bootstrap_company() to authenticated', 'authenticated bootstrap grant');
-includes(shell, 'plannipro-shell-v28', 'new application shell cache');
+includes(shell, 'plannipro-shell-v29', 'new application shell cache');
 
 new vm.Script(cloud, { filename: 'plannipro-cloud.js' });
 new vm.Script(shell, { filename: 'sw.js' });

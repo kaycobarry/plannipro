@@ -4,6 +4,59 @@
 
 begin;
 
+-- La création de nouvelles organisations est une opération de plateforme,
+-- distincte du rôle owner propre à chaque entreprise. La liste reste dans un
+-- schéma non exposé et n'est jamais lisible depuis le navigateur.
+create schema if not exists plannipro_private;
+revoke all on schema plannipro_private from public, anon, authenticated;
+
+create table if not exists plannipro_private.platform_administrators (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  created_at timestamptz not null default pg_catalog.now(),
+  created_by uuid references auth.users(id) on delete set null
+);
+
+alter table plannipro_private.platform_administrators enable row level security;
+revoke all on table plannipro_private.platform_administrators from public, anon, authenticated;
+
+-- Au premier passage uniquement, le gérant actif de l'organisation historique
+-- la plus ancienne devient l'administrateur de plateforme. Une réexécution ne
+-- promeut donc jamais les propriétaires d'entreprises créées ultérieurement.
+insert into plannipro_private.platform_administrators (user_id, created_by)
+select om.user_id, om.user_id
+from public.organization_members om
+join public.roles r
+  on r.id = om.role_id
+ and r.organization_id = om.organization_id
+join public.organizations o on o.id = om.organization_id
+where om.status = 'active'
+  and r.key = 'owner'
+  and not exists (select 1 from plannipro_private.platform_administrators)
+order by o.created_at, om.created_at, om.user_id
+limit 1
+on conflict (user_id) do nothing;
+
+create or replace function public.is_platform_administrator()
+returns boolean
+language sql
+security definer
+stable
+set search_path = ''
+as $$
+  select auth.uid() is not null
+     and exists (
+       select 1
+       from plannipro_private.platform_administrators pa
+       where pa.user_id = auth.uid()
+     )
+$$;
+
+revoke all on function public.is_platform_administrator() from public, anon, authenticated;
+grant execute on function public.is_platform_administrator() to authenticated;
+
+comment on function public.is_platform_administrator() is
+  'Indique uniquement au compte connecté s il est autorisé à créer de nouvelles entreprises PlanniPro.';
+
 alter table public.invitations
   add column if not exists first_name text;
 alter table public.invitations

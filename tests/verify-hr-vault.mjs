@@ -116,7 +116,7 @@ assert.ok(!index.includes("const HR_DOC_DB="), 'legacy document IndexedDB writer
 assert.equal((vaultCss.match(/{/g) || []).length, (vaultCss.match(/}/g) || []).length, 'Vault CSS braces must be balanced');
 includes(vaultCss, '@media(max-width:700px)', 'mobile vault layout');
 
-includes(shell, 'plannipro-shell-v28', 'service worker cache increment');
+includes(shell, 'plannipro-shell-v29', 'service worker cache increment');
 includes(shell, './plannipro-vault.js', 'vault module cached');
 includes(shell, './plannipro-vault.css', 'vault styles cached');
 
