@@ -8,6 +8,8 @@ Pour une procédure pas à pas à réaliser sans modifier de code, consulter [`E
 
 Dans le projet Supabase, ouvrir **SQL Editor**, créer une nouvelle requête, copier intégralement [`supabase/schema.sql`](../supabase/schema.sql), puis cliquer sur **Run**. Le script crée les tables, rôles, permissions, déclencheurs, RLS, journal d’audit, bucket privé de documents et publication Realtime.
 
+Après `schema.sql`, appliquer dans l’ordre les migrations complémentaires utilisées par l’installation : `time-clock.sql`, `rbac-advanced.sql`, `time-clock-secure-activation.sql`, `hr-vault.sql`, puis `company-administration.sql`. La migration de pointeuse remplace l’enregistrement direct par des codes d’activation temporaires et supprime la distribution de vérificateurs de PIN aux tablettes. `company-administration.sql` remplace l’inscription libre par la création d’entreprise autorisée côté serveur et l’activation des collaborateurs sur invitation.
+
 Ne pas continuer au déploiement GitHub Pages tant que cette requête n’a pas terminé sans erreur.
 
 Le script est prévu pour un projet neuf. Une erreur doit être conservée et corrigée avant de relancer ; ne pas supprimer de table ni désactiver RLS pour la contourner.
@@ -22,7 +24,7 @@ Dans **Authentication → Providers → Email** :
 - dans **URL Configuration**, renseigner l’URL finale GitHub Pages comme `Site URL` et dans `Redirect URLs` ;
 - ajouter aussi `http://localhost:4173` seulement pour les tests locaux si nécessaire.
 
-Une inscription crée seulement un compte Auth. Elle ne donne jamais accès à une entreprise existante : le rattachement passe par une invitation acceptée ou par la création du tout premier espace.
+La page publique ne propose aucune inscription libre. **Créer une entreprise** passe par la fonction serveur dédiée ; rejoindre une entreprise existante exige une invitation valide.
 
 ## 3. Déployer les Edge Functions
 
@@ -30,6 +32,7 @@ Installer la CLI Supabase, puis depuis la racine du dépôt :
 
 ```bash
 npx --yes supabase@latest secrets set --project-ref pkviymixsxwtwrarqomi APP_ORIGINS=https://kaycobarry.github.io APP_URL=https://VOTRE-DOMAINE-GITHUB-PAGES/CHEMIN-APP
+npx --yes supabase@latest functions deploy create-company --project-ref pkviymixsxwtwrarqomi --no-verify-jwt
 npx --yes supabase@latest functions deploy invite-user --project-ref pkviymixsxwtwrarqomi --no-verify-jwt
 npx --yes supabase@latest functions deploy revoke-user-sessions --project-ref pkviymixsxwtwrarqomi --no-verify-jwt
 ```
@@ -47,9 +50,9 @@ Variables à vérifier :
 ## 4. Créer le premier gérant et importer l’existant
 
 1. Ouvrir l’application locale avec la nouvelle version.
-2. Créer un compte avec l’adresse du gérant et confirmer l’e-mail.
-3. Se connecter, saisir le nom de l’entreprise et le premier établissement.
-4. Cliquer sur **Créer l’espace et importer mes données locales**.
+2. Cliquer sur **Créer une entreprise** et renseigner l’entreprise, le premier établissement et l’administrateur.
+3. Confirmer l’e-mail si cette protection Auth est activée.
+4. Se connecter : l’organisation, l’établissement et le rôle Super Administrateur sont créés automatiquement.
 
 Le compte devient `owner` (Gérant / Super administrateur), une sauvegarde de l’état local est placée dans IndexedDB, puis les salariés, planning, absences, pointages, registre, ERP et paramètres sont importés. Les identifiants locaux sont utilisés comme clés de migration afin que le même import ne crée pas de doublons.
 
@@ -57,6 +60,6 @@ Après une synchronisation réussie, la copie métier `ppv3` est archivée dans 
 
 ## 5. Créer des comptes et vérifier les accès
 
-Depuis **Utilisateurs et droits d’accès**, le gérant peut inviter, renvoyer ou annuler une invitation, attribuer un rôle, définir un établissement/équipe, modifier les droits individuels, suspendre un compte et consulter les invitations. Les droits sont appliqués à la fois dans l’interface et par RLS dans PostgreSQL.
+Depuis **Administration → Utilisateurs**, le gérant peut inviter, renvoyer ou annuler une invitation, attribuer un rôle, définir un établissement et des services, ajouter des permissions complémentaires, suspendre un compte et consulter les invitations. L’invité choisit seulement son mot de passe ; l’organisation est imposée par le jeton. Les droits sont appliqués à la fois dans l’interface et par RLS dans PostgreSQL.
 
 Exécuter ensuite chaque scénario de [`tests/rls-checklist.md`](../tests/rls-checklist.md). Les tests d’intégration ne peuvent être validés qu’après l’exécution du SQL dans le projet Supabase.

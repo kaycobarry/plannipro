@@ -5,7 +5,7 @@ import vm from 'node:vm';
 const root = new URL('..', import.meta.url);
 const read = (file) => fs.readFileSync(new URL(file, root), 'utf8');
 const migration = read('supabase/rbac-advanced.sql');
-const timeClock = read('supabase/time-clock.sql');
+const timeClock = read('supabase/time-clock.sql') + read('supabase/time-clock-secure-activation.sql');
 const cloud = read('plannipro-cloud.js');
 const kiosk = read('pointeuse.js');
 const index = read('index.html');
@@ -71,10 +71,10 @@ includes(cloud, "action: 'manage'", 'module management UI guards');
 assert.ok(!cloud.includes("App.require('users', 'manage_users')"), 'Browser UI must not rely on the broad legacy user permission');
 
 includes(index, 'copiedFrom:shift.id', 'copied shifts carry an immutable-copy intent marker');
-includes(timeClock, "pointage.suspend_device", 'time-clock suspension permission');
-includes(timeClock, "pointage.reactivate_device", 'time-clock reactivation permission');
-includes(kiosk, "managerCan('pointage.edit_schedule'", 'time-clock schedule UI guard');
-includes(kiosk, "managerCan(requiredPermission", 'time-clock device-status UI guard');
+includes(timeClock, "clock_devices.disable", 'time-clock suspension permission');
+includes(timeClock, "clock_devices.update", 'time-clock reactivation permission');
+includes(kiosk, "managerCan('clock_devices.update'", 'time-clock update UI guard');
+includes(kiosk, "managerCan('clock_devices.disable'", 'time-clock device-status UI guard');
 
 const inlineScripts = [...index.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 assert.equal(inlineScripts.length, 1, 'The application must retain one parseable inline script');

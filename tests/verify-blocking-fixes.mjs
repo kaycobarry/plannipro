@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const root = new URL('..', import.meta.url);
-const read = (file) => fs.readFileSync(new URL(file, root), 'utf8');
+const read = (file) => fs.readFileSync(new URL(file, root), 'utf8').replace(/\r\n/g, '\n');
 const cloud = read('plannipro-cloud.js');
 const schema = read('supabase/schema.sql');
-const timeClock = read('supabase/time-clock.sql');
+const timeClock = read('supabase/time-clock.sql') + read('supabase/time-clock-secure-activation.sql');
 const kiosk = read('pointeuse.js');
 
 function extractFunction(source, name, nextName) {
@@ -123,9 +123,10 @@ assert.equal(syncContext.applied, true);
 
 // B3 — returning normally commits the server-side attempt counter; the kiosk
 // converts the returned business error into its existing error path.
-assert.ok(timeClock.includes("return jsonb_build_object('error', 'Invalid time clock code')"));
-assert.ok(timeClock.includes("return jsonb_build_object('error', 'Offline badge proof is invalid')"));
-assert.ok(timeClock.includes("convert_to(public.time_clock_proof_message"));
+assert.ok(timeClock.includes("return jsonb_build_object('error', 'Code incorrect ou indisponible')"));
+assert.ok(timeClock.includes('attempt_window_started_at'));
+assert.ok(timeClock.includes('lock_level'));
+assert.ok(timeClock.includes('p_offline_proof is not null or p_pin is null'));
 assert.ok(kiosk.includes('throw appError(parsed.error)'));
 
 // B4 — snapshots contain both planning states and the synchronized setting

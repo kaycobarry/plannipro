@@ -1,6 +1,6 @@
 # Déploiement GitHub Pages — après validation sécurité
 
-Ne publier qu’après avoir exécuté `supabase/schema.sql`, puis `supabase/time-clock.sql`, déployé les Edge Functions et validé les scénarios de `tests/rls-checklist.md`, `tests/time-clock-rls-checklist.md` ainsi que ceux de `docs/POINTEUSE_TABLETTE.md`.
+Ne publier qu’après avoir exécuté `supabase/schema.sql`, puis les migrations `time-clock.sql`, `rbac-advanced.sql`, `time-clock-secure-activation.sql`, `hr-vault.sql` et `company-administration.sql`, déployé les Edge Functions `create-company`, `invite-user`, `revoke-user-sessions` et, si l’e-mail des PIN est activé, `send-clock-pin-invitation`, puis validé les scénarios de sécurité.
 
 1. Vérifier localement :
 

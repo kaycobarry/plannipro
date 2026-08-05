@@ -1,20 +1,38 @@
-# Validation réelle — Pointeuse et RLS
+# Recette réelle — Pointeuse sécurisée
 
-À exécuter avec de vrais comptes Supabase avant toute publication. Les tests `node` vérifient la structure, pas les droits du projet distant.
+Les tests Node contrôlent les chemins de code. Cette liste doit être exécutée après application de `supabase/time-clock-secure-activation.sql` sur une base de recette.
 
-| Scénario | Action | Résultat attendu |
-|---|---|---|
-| Gérant | Configure une tablette pour Nantes Charcot, crée deux codes | Tablette active, deux noms visibles sur la tablette, aucun code affiché. |
-| Manager non habilité | Ouvre `pointeuse.html` et tente la configuration | Refus après connexion : pas de droit de configuration. |
-| Manager habilité, périmètre Nantes | Crée/modifie un code pour un salarié de Nantes | Autorisé. |
-| Manager Nantes | Tente de gérer une tablette ou un code d'un autre établissement | Refusé par la RPC et par RLS. |
-| Salarié | Se connecte à PlanniPro et consulte ses pointages | Ne voit que ses propres événements/récapitulatifs. |
-| Salarié | Modifie l'URL, la console ou appelle les tables `time_clock_devices` / `employee_time_clock_credentials` | Aucune donnée ni écriture directe autorisée. |
-| Tablette en ligne | Entrée → pause → reprise → sortie | Quatre événements, un seul récapitulatif journalier dans Pointage. |
-| Doublon réseau | Rejoue exactement le même `client_event_id` | Réponse `duplicate: true`, aucun second événement. |
-| Hors connexion | Coupe le réseau, badge, rouvre la page, puis reconnecte | Badge présent dans la file IndexedDB puis synchronisé une seule fois. |
-| Code modifié | Change le code, puis tente de synchroniser un badge ancien | Le serveur accepte la période de grâce de sept jours ou bloque le badge pour revue manager. |
-| Appareil suspendu | Suspend la tablette depuis Gérer les pointeuses, puis badge | Nouveau badge refusé ; les badges en attente ne sont plus synchronisés. |
-| Multi-entreprises | Utilisateur de l'entreprise B tente le cache ou les événements de l'entreprise A | Aucune lecture ni modification possible. |
+| # | Scénario | Résultat attendu |
+|---:|---|---|
+| 1 | Première ouverture sans stockage local | Écran « Activer cette pointeuse », aucune ligne créée. |
+| 2 | Connexion manager puis annulation | Aucune pointeuse créée. |
+| 3 | Activation avec code valide | Un appareil actif, code consommé, token hashé. |
+| 4 | Code expiré | Refus générique, aucun appareil. |
+| 5 | Code réutilisé | Refus, aucun doublon. |
+| 6 | Actualisation | Même identifiant de terminal. |
+| 7 | Fermeture/réouverture | Même terminal reconnu. |
+| 8 | Suppression du stockage du site | Retour activation, aucune création automatique. |
+| 9 | Suspension | Cache et badge refusés. |
+| 10 | Révocation | Badge immédiatement refusé, motif audité. |
+| 11 | Terminal sans badge | Suppression physique autorisée. |
+| 12 | Terminal avec badges | Archivage, événements conservés. |
+| 13 | Génération PIN | Six chiffres aléatoires, visibles une fois. |
+| 14 | Lecture directe des identifiants | Aucun PIN/hash accessible. |
+| 15 | PIN correct | Identité minimale et actions autorisées. |
+| 16 | PIN incorrect | Message non énumérant. |
+| 17 | Cinq échecs | Blocage temporaire. |
+| 18 | Fin du blocage | Nouvelle tentative autorisée. |
+| 19 | Réinitialisation | Ancien PIN refusé, nouveau accepté. |
+| 20 | Invitation expirée | Refus. |
+| 21 | Invitation consommée deux fois | Second usage refusé. |
+| 22 | Salarié désactivé | PIN refusé. |
+| 23 | Salarié d’un autre établissement | PIN refusé. |
+| 24 | Manager sans permission | Activation/gestion refusée. |
+| 25 | Autre tenant | Aucune lecture, gestion ou activation. |
+| 26 | Entrée | Événement unique et résumé Pointage. |
+| 27 | Sortie | Événement unique et résumé Pointage. |
+| 28 | Rejeu du même `client_event_id` | `duplicate: true`, aucun doublon. |
+| 29 | Correction manager | Valeur d’origine et motif conservés par le module Pointage. |
+| 30 | Ordinateur, tablette et mobile | Aucun débordement, pavé tactile lisible. |
 
-Pour chaque échec, conserver une capture de l'écran et le message Supabase, sans transmettre de mot de passe ni de clé serveur.
+Le test hors ligne attendu est désormais un refus explicite de nouveau badge. Aucun vérificateur de PIN et aucune file de nouveaux pointages ne doivent être présents dans IndexedDB.

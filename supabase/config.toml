@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.revoke-user-sessions]
 verify_jwt = false
+
+[functions.publish-planning]
+verify_jwt = true

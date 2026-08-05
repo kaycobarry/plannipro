@@ -1,0 +1,75 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+
+const root = new URL('..', import.meta.url);
+const read = (file) => fs.readFileSync(new URL(file, root), 'utf8');
+const migration = read('supabase/company-administration.sql');
+const schema = read('supabase/schema.sql');
+const rbac = read('supabase/rbac-advanced.sql');
+const cloud = read('plannipro-cloud.js');
+const createCompany = read('supabase/functions/create-company/index.ts');
+const inviteUser = read('supabase/functions/invite-user/index.ts');
+const shell = read('sw.js');
+
+const includes = (source, expected, label = expected) => {
+  assert.ok(source.includes(expected), `Missing: ${label}`);
+};
+
+assert.match(migration, /^--[\s\S]*?\nbegin;/i, 'Company migration must start transactionally');
+assert.match(migration, /commit;\s*$/i, 'Company migration must commit explicitly');
+includes(migration, 'add column if not exists first_name', 'idempotent invitation first name');
+includes(migration, 'add column if not exists last_name', 'idempotent invitation last name');
+
+// New company + automatic first administrator.
+includes(createCompany, 'signupClient.auth.signUp', 'server-orchestrated Auth signup');
+includes(createCompany, 'admin.auth.admin.updateUserById', 'server-owned creator authorization');
+includes(createCompany, 'plannipro_company_creator: true', 'trusted company creator flag');
+includes(createCompany, 'plannipro_company_setup', 'trusted company setup payload');
+assert.ok(!createCompany.includes('access_token'), 'The public company endpoint must not return Auth tokens');
+includes(migration, "raw_app_meta_data ->> 'plannipro_company_creator'", 'bootstrap requires app_metadata authorization');
+includes(migration, 'email_confirmed_at is null', 'bootstrap requires confirmed email');
+includes(migration, 'This account already belongs to or created an organization', 'one-time bootstrap guard');
+includes(migration, "where organization_id = v_org_id and key = 'owner'", 'automatic primary administrator role');
+includes(migration, "'organization.created'", 'company creation audit');
+includes(migration, "- 'plannipro_company_creator' - 'plannipro_company_setup'", 'one-time authorization consumption');
+includes(cloud, "functions.invoke('create-company'", 'public company wizard uses server endpoint');
+includes(cloud, "rpc('bootstrap_company'", 'authorized automatic bootstrap');
+assert.ok(!cloud.includes("data-pp-auth-mode=\"signup\""), 'Free signup link must not be present');
+assert.ok(!cloud.includes('App.client.auth.signUp'), 'Browser must not create free Auth accounts');
+includes(cloud, 'Créer une entreprise', 'explicit independent-company action');
+
+// Invitation creation, activation, expiration, replay and tamper resistance.
+includes(inviteUser, 'create_company_invitation', 'admin invitation RPC');
+includes(inviteUser, 'userClient.rpc("create_invitation", invitationArgs)', 'legacy pending invitation resend compatibility');
+includes(inviteUser, 'p_first_name', 'invited first name');
+includes(inviteUser, 'p_last_name', 'invited last name');
+includes(inviteUser, 'inviteUserByEmail', 'secure Supabase invite email');
+includes(migration, 'function public.validate_invitation', 'pre-password invitation validation');
+includes(cloud, "rpc('validate_invitation'", 'browser validates invitation before password');
+includes(cloud, "rpc('claim_invitation'", 'invitation activation');
+includes(migration, "and i.status = 'sent'", 'used/cancelled invitation rejection');
+includes(migration, "v_inv.expires_at <= pg_catalog.now()", 'expired invitation rejection');
+includes(migration, 'This invitation was issued for another email address', 'email/org impersonation rejection');
+includes(migration, "extensions.digest(p_token, 'sha256')", 'tamper-resistant hashed token');
+includes(migration, 'Password setup required', 'password required before membership');
+includes(migration, 'delete from public.manager_scopes', 'stale scopes removed on reactivation');
+includes(migration, 'delete from public.user_permissions', 'stale overrides removed on reactivation');
+includes(cloud, "form.getAll('permission_key')", 'supplementary permission selector');
+includes(cloud, "scope_type: 'service'", 'service scopes in invitation');
+
+// Direct writes remain closed; RLS and Realtime remain the enforcement layer.
+includes(schema, 'drop policy if exists organization_members_insert', 'no direct membership insertion policy');
+assert.ok(!schema.includes('create policy organization_members_insert'), 'Direct organization attachment must remain impossible');
+includes(schema, 'alter table public.invitations enable row level security', 'invitation RLS');
+includes(rbac, 'alter publication supabase_realtime add table public.roles', 'RBAC Realtime');
+includes(migration, 'alter publication supabase_realtime add table public.invitations', 'invitation Realtime publication');
+includes(cloud, "table: 'invitations'", 'invitation Realtime subscription');
+includes(migration, 'revoke all on function public.bootstrap_company()', 'bootstrap EXECUTE lockdown');
+includes(migration, 'grant execute on function public.bootstrap_company() to authenticated', 'authenticated bootstrap grant');
+includes(shell, 'plannipro-shell-v28', 'new application shell cache');
+
+new vm.Script(cloud, { filename: 'plannipro-cloud.js' });
+new vm.Script(shell, { filename: 'sw.js' });
+
+console.log('Company administration/static security checks: OK');
