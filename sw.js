@@ -1,4 +1,4 @@
-const CACHE = "plannipro-shell-v25";
+const CACHE = "plannipro-shell-v28";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -7,9 +7,11 @@ const APP_SHELL = [
   "./pointeuse.webmanifest",
   "./pointeuse-icon.svg",
   "./supabase-config.js",
-  "./plannipro-cloud.js?v=no-signup2",
-  "./plannipro-vault.js?v=no-signup2",
+  "./plannipro-cloud.js?v=topbar3",
+  "./plannipro-vault.js?v=logout3",
   "./plannipro-vault.css",
+  "./plannipro-publications.js?v=topbar3",
+  "./plannipro-publications.css",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
 ];
 

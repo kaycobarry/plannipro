@@ -32,6 +32,7 @@
     'openErpModal()': ['financial', 'create'],
     'openSiteModal()': ['establishments', 'create'],
     'openTimeClockApp()': ['pointage', 'edit_schedule'],
+    'openTimeClockManagement()': ['clock_devices', 'view'],
     'exportCSV()': ['planning', 'export'],
     'exportPDF()': ['planning', 'export'],
     'printWeeklyPlanning()': ['planning', 'print']
@@ -68,6 +69,7 @@
     remoteReady: false,
     lastError: null,
     realtimeChannel: null,
+    planningPublicationsAvailable: false,
     usePrivateCache: () => Boolean(App.session && App.context),
     can(module, action = 'view') {
       if (!App.context || !Array.isArray(App.context.permissions)) return false;
@@ -272,44 +274,34 @@
   function authForm(mode, message, error) {
     const node = document.getElementById('pp-auth-gate');
     if (!node) return;
-    const isSignup = mode === 'signup';
+    const isCompany = mode === 'company';
     const isReset = mode === 'reset';
     const isUpdate = mode === 'update-password';
-    const title = isSignup ? 'Créer un compte' : isReset ? 'Réinitialiser le mot de passe' : isUpdate ? 'Choisir un nouveau mot de passe' : 'Connexion à PlanniPro';
-    const copy = isSignup ? 'Un compte seul ne donne accès à aucune entreprise : un salarié ou manager doit être invité par un gérant.' : isReset ? 'Nous vous enverrons un lien de récupération sécurisé.' : isUpdate ? 'Choisissez un mot de passe robuste pour protéger votre espace.' : 'Connectez-vous pour charger uniquement les données auxquelles votre profil a accès.';
+    const isInvite = mode === 'invite-password';
+    const copy = isCompany ? 'Créez une nouvelle organisation indépendante. Les collaborateurs la rejoindront uniquement sur invitation.' : isReset ? 'Nous vous enverrons un lien de récupération sécurisé.' : isInvite ? 'Votre invitation est valide. Choisissez maintenant votre mot de passe pour activer votre accès.' : isUpdate ? 'Choisissez un mot de passe robuste pour protéger votre espace.' : 'Connectez-vous pour charger uniquement les données auxquelles votre profil a accès.';
+    const companyFields = isCompany ? '<label>Nom de l’entreprise<input name="organization_name" required maxlength="120" autocomplete="organization"></label><label>Nom du premier établissement<input name="establishment_name" required maxlength="120"></label><label>Prénom de l’administrateur<input name="first_name" required maxlength="80" autocomplete="given-name"></label><label>Nom de l’administrateur<input name="last_name" required maxlength="80" autocomplete="family-name"></label>' : '';
     node.hidden = false;
-    node.innerHTML = `<div class="pp-auth-card"><div class="pp-auth-brand">Planni<b>Pro</b></div><p class="pp-auth-kicker">${copy}</p>${message ? '<p class="pp-auth-note' + (error ? ' err' : '') + '">' + escapeHtml(message) + '</p>' : ''}<form class="pp-auth-form" id="pp-auth-form" data-mode="${mode}">${isSignup ? '<label>Nom complet<input name="full_name" autocomplete="name" required maxlength="120"></label>' : ''}${!isUpdate ? '<label>Adresse e-mail<input name="email" type="email" autocomplete="email" required></label>' : ''}${!isReset ? '<label>Mot de passe<input name="password" type="password" autocomplete="' + (isSignup || isUpdate ? 'new-password' : 'current-password') + '" minlength="8" required></label>' : ''}<button class="pp-auth-submit" type="submit">${isSignup ? 'Créer mon compte' : isReset ? 'Envoyer le lien' : isUpdate ? 'Mettre à jour le mot de passe' : 'Se connecter'}</button></form><div class="pp-auth-links">${!isUpdate && !isReset ? '<button class="pp-auth-link" data-pp-auth-mode="reset" type="button">Mot de passe oublié ?</button>' : ''}${!isUpdate && !isReset ? '' : '<button class="pp-auth-link" data-pp-auth-mode="login" type="button">Retour à la connexion</button>'}</div></div>`;
+    node.innerHTML = `<div class="pp-auth-card"><div class="pp-auth-brand">Planni<b>Pro</b></div><p class="pp-auth-kicker">${copy}</p>${message ? '<p class="pp-auth-note' + (error ? ' err' : '') + '">' + escapeHtml(message) + '</p>' : ''}<form class="pp-auth-form" id="pp-auth-form" data-mode="${mode}">${companyFields}${!isUpdate && !isInvite ? '<label>Adresse e-mail<input name="email" type="email" autocomplete="email" required></label>' : ''}${!isReset ? '<label>Mot de passe<input name="password" type="password" autocomplete="' + (isCompany || isUpdate || isInvite ? 'new-password' : 'current-password') + '" minlength="8" required></label>' : ''}${isCompany || isInvite ? '<label>Confirmer le mot de passe<input name="password_confirmation" type="password" autocomplete="new-password" minlength="8" required></label>' : ''}<button class="pp-auth-submit" type="submit">${isCompany ? 'Créer l’entreprise' : isReset ? 'Envoyer le lien' : isInvite ? 'Activer mon accès' : isUpdate ? 'Mettre à jour le mot de passe' : 'Se connecter'}</button></form><div class="pp-auth-links">${mode === 'login' ? '<button class="pp-auth-link" data-pp-auth-mode="reset" type="button">Mot de passe oublié ?</button><button class="pp-auth-link" data-pp-auth-mode="company" type="button">Créer une entreprise</button>' : ''}${!isInvite && mode !== 'login' ? '<button class="pp-auth-link" data-pp-auth-mode="login" type="button">Retour à la connexion</button>' : ''}</div></div>`;
     node.querySelector('input')?.focus();
-  }
-
-  function bootstrapForm(message, error) {
-    const node = document.getElementById('pp-auth-gate');
-    if (!node) return;
-    const hasLocal = localStateHasContent();
-    node.hidden = false;
-    node.innerHTML = `<div class="pp-auth-card"><div class="pp-auth-brand">Bienvenue dans Planni<b>Pro</b></div><p class="pp-auth-kicker">Vous êtes le premier utilisateur de cet espace : votre compte deviendra automatiquement <strong>Gérant / Super administrateur</strong>.</p>${message ? '<p class="pp-auth-note' + (error ? ' err' : '') + '">' + escapeHtml(message) + '</p>' : ''}<form class="pp-auth-form" id="pp-bootstrap-form"><label>Nom de l’entreprise<input name="organization_name" required maxlength="120" placeholder="ex. Commerce Martin"></label><label>Premier établissement<input name="establishment_name" required maxlength="120" placeholder="ex. Nantes Charcot"></label><button class="pp-auth-submit" type="submit">${hasLocal ? 'Créer l’espace et importer mes données locales' : 'Créer mon espace sécurisé'}</button></form>${hasLocal ? '<p class="pp-auth-note">Une copie de sauvegarde de vos données actuelles sera conservée dans le cache privé IndexedDB du navigateur avant import. Les doublons sont évités avec les identifiants locaux existants.</p>' : ''}</div>`;
   }
 
   async function handleUiSubmit(event) {
     const form = event.target;
     if (!(form instanceof HTMLFormElement)) return;
-    if (form.id !== 'pp-auth-form' && form.id !== 'pp-bootstrap-form' && form.id !== 'pp-existing-import-form') return;
+    if (form.id !== 'pp-auth-form' && form.id !== 'pp-existing-import-form') return;
     event.preventDefault();
     const submit = form.querySelector('button[type="submit"]');
     if (submit) { submit.disabled = true; submit.textContent = 'Patientez…'; }
     const fields = new FormData(form);
     try {
-      if (form.id === 'pp-bootstrap-form') {
-        await bootstrapOrganization(String(fields.get('organization_name') || ''), String(fields.get('establishment_name') || ''));
-      } else if (form.id === 'pp-existing-import-form') {
+      if (form.id === 'pp-existing-import-form') {
         await importExistingLocalState();
       } else {
         await submitAuth(form.dataset.mode || 'login', fields);
       }
     } catch (error) {
       const mode = form.dataset.mode || 'login';
-      if (form.id === 'pp-bootstrap-form') bootstrapForm(error.message || 'Impossible de créer l’espace.', true);
-      else if (form.id === 'pp-existing-import-form') existingImportForm(error.message || 'Import impossible.', true);
+      if (form.id === 'pp-existing-import-form') existingImportForm(error.message || 'Import impossible.', true);
       else authForm(mode, error.message || 'Une erreur est survenue.', true);
     } finally {
       if (submit && document.body.contains(submit)) { submit.disabled = false; }
@@ -324,13 +316,20 @@
       if (error) throw error;
       return;
     }
-    if (mode === 'signup') {
-      const { data, error } = await App.client.auth.signUp({
-        email, password,
-        options: { data: { full_name: String(fields.get('full_name') || '').trim() }, emailRedirectTo: appUrl() }
+    if (mode === 'company') {
+      if (password !== String(fields.get('password_confirmation') || '')) throw new Error('Les mots de passe ne correspondent pas.');
+      const { data, error } = await App.client.functions.invoke('create-company', {
+        body: {
+          organization_name: String(fields.get('organization_name') || '').trim(),
+          establishment_name: String(fields.get('establishment_name') || '').trim(),
+          first_name: String(fields.get('first_name') || '').trim(),
+          last_name: String(fields.get('last_name') || '').trim(),
+          email,
+          password
+        }
       });
       if (error) throw error;
-      if (!data.session) authForm('login', 'Vérifiez votre e-mail puis revenez vous connecter.');
+      authForm('login', data?.confirmation_required ? 'Entreprise enregistrée. Confirmez votre e-mail, puis connectez-vous pour terminer la création.' : 'Entreprise enregistrée. Connectez-vous pour terminer la création.');
       return;
     }
     if (mode === 'reset') {
@@ -343,6 +342,19 @@
       const { error } = await App.client.auth.updateUser({ password });
       if (error) throw error;
       authForm('login', 'Mot de passe mis à jour. Vous pouvez vous reconnecter.');
+      return;
+    }
+    if (mode === 'invite-password') {
+      if (password !== String(fields.get('password_confirmation') || '')) throw new Error('Les mots de passe ne correspondent pas.');
+      const token = getInviteToken();
+      if (!token) throw new Error('Le lien d’invitation est absent.');
+      const { error: passwordError } = await App.client.auth.updateUser({ password });
+      if (passwordError) throw passwordError;
+      const { error: invitationError } = await App.client.rpc('claim_invitation', { p_token: token });
+      if (invitationError) throw invitationError;
+      clearInviteToken();
+      const { data: current } = await App.client.auth.getSession();
+      await activateSession(current.session, 'INVITATION_ACCEPTED');
     }
   }
 
@@ -450,13 +462,22 @@
       if (eventName === 'PASSWORD_RECOVERY') { authForm('update-password'); return; }
       const invite = getInviteToken();
       if (invite) {
-        const { error } = await App.client.rpc('claim_invitation', { p_token: invite });
-        if (error) throw error;
-        clearInviteToken();
-        safeToast('Invitation acceptée : vos droits sont maintenant actifs.', 'ok');
+        const { data: invitation, error } = await App.client.rpc('validate_invitation', { p_token: invite });
+        if (error) {
+          clearInviteToken();
+          await App.client.auth.signOut({ scope: 'local' });
+          authForm('login', error.message || 'Cette invitation est invalide, expirée ou déjà utilisée.', true);
+          return;
+        }
+        authForm('invite-password', `Invitation pour ${invitation?.organization_name || 'votre entreprise'}${invitation?.first_name ? ` · bienvenue ${invitation.first_name}` : ''}.`);
+        return;
       }
       const context = await refreshContext();
       if (!context) {
+        if (App.user?.app_metadata?.plannipro_company_creator === true) {
+          await bootstrapOrganization();
+          return;
+        }
         // A suspended/disabled membership has no access context.  Do not offer
         // the first-owner bootstrap flow to an existing, revoked account.
         const { data: ownMemberships } = await App.client
@@ -471,7 +492,8 @@
           authForm('login', 'Votre accès à PlanniPro n’est pas actif. Contactez votre gérant.', true);
           return;
         }
-        bootstrapForm();
+        await App.client.auth.signOut({ scope: 'local' });
+        authForm('login', 'Ce compte n’est rattaché à aucune entreprise. Utilisez une invitation valide ou créez une nouvelle entreprise.', true);
         return;
       }
       await App.client.rpc('touch_member_session');
@@ -494,10 +516,8 @@
     }
   }
 
-  async function bootstrapOrganization(name, establishment) {
-    const { data, error } = await App.client.rpc('bootstrap_organization', {
-      p_name: name.trim(), p_establishment_name: establishment.trim()
-    });
+  async function bootstrapOrganization() {
+    const { data, error } = await App.client.rpc('bootstrap_company');
     if (error) throw error;
     await refreshContext();
     if (!App.context) throw new Error('L’espace a été créé mais les droits ne sont pas encore disponibles.');
@@ -591,6 +611,7 @@
         }
       }
       try { await window.PlanniProVault?.shutdown?.(); } catch (_) { /* Identity and Realtime are already cleared. */ }
+      try { await window.PlanniProPublications?.shutdown?.(); } catch (_) { /* Publication channel is already isolated from the signed-out UI. */ }
     }
   }
 
@@ -600,12 +621,12 @@
     if (!root) {
       root = document.createElement('div');
       root.className = 'pp-account';
-      document.querySelector('.topbar > div:last-child, .topbar')?.appendChild(root);
+      (document.getElementById('topbarAccountSlot') || document.querySelector('.topbar > div:last-child') || document.querySelector('.topbar'))?.appendChild(root);
     }
     const initials = (App.user.user_metadata?.full_name || App.user.email || 'U').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
     const options = App.contexts.map((context) => `<option value="${escapeHtml(context.organization_id)}" ${context.organization_id === App.context.organization_id ? 'selected' : ''}>${escapeHtml(context.organization_name)} · ${escapeHtml(context.role_label)}</option>`).join('');
     const canOpenUsers = ['view', 'invite', 'disable', 'reactivate', 'delete', 'manage_roles', 'manage_permissions'].some((action) => App.can('users', action));
-    root.innerHTML = `<button class="pp-account-button" type="button" data-pp-action="account-toggle" aria-label="Menu utilisateur"><span class="pp-account-avatar">${escapeHtml(initials)}</span><span class="pp-account-lines"><span class="pp-account-name">${escapeHtml(App.user.user_metadata?.full_name || App.user.email || 'Utilisateur')}</span><span class="pp-account-role">${escapeHtml(App.context.role_label)} · ${escapeHtml(App.context.organization_name)}</span></span></button><button class="pp-logout-button" type="button" data-pp-action="logout">Quitter</button><div class="pp-account-menu"><p><strong>${escapeHtml(App.context.role_label)}</strong> · ${escapeHtml(App.context.status)}</p>${App.contexts.length > 1 ? '<select data-pp-org-switch>' + options + '</select>' : ''}<p style="margin-top:9px"><span class="pp-sync-status" data-pp-sync-status>Synchronisé</span></p><div class="pp-account-actions"><button type="button" data-pp-action="sync-now">Synchroniser maintenant</button>${App.context.employee_id ? '<button type="button" data-pp-action="self-service">Mes coordonnées</button>' : ''}<button type="button" data-pp-action="change-password">Modifier le mot de passe</button>${canOpenUsers ? '<button type="button" data-pp-action="open-users">Utilisateurs et droits d’accès</button>' : ''}<button type="button" class="danger" data-pp-action="logout">Se déconnecter</button></div></div>`;
+    root.innerHTML = `<button class="pp-account-button" type="button" data-pp-action="account-toggle" aria-label="Menu utilisateur"><span class="pp-account-avatar">${escapeHtml(initials)}</span><span class="pp-account-lines"><span class="pp-account-name">${escapeHtml(App.user.user_metadata?.full_name || App.user.email || 'Utilisateur')}</span><span class="pp-account-role">${escapeHtml(App.context.role_label)} · ${escapeHtml(App.context.organization_name)}</span></span></button><button class="pp-logout-button" type="button" data-pp-action="logout" aria-label="Déconnexion" title="Déconnexion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg><span>Quitter</span></button><div class="pp-account-menu"><p><strong>${escapeHtml(App.context.role_label)}</strong> · ${escapeHtml(App.context.status)}</p>${App.contexts.length > 1 ? '<select data-pp-org-switch>' + options + '</select>' : ''}<p style="margin-top:9px"><span class="pp-sync-status" data-pp-sync-status>Synchronisé</span></p><div class="pp-account-actions"><button type="button" data-pp-action="sync-now">Synchroniser maintenant</button>${App.context.employee_id ? '<button type="button" data-pp-action="self-service">Mes coordonnées</button>' : ''}<button type="button" data-pp-action="change-password">Modifier le mot de passe</button>${canOpenUsers ? '<button type="button" data-pp-action="open-users">Utilisateurs et droits d’accès</button>' : ''}<button type="button" class="danger" data-pp-action="logout">Se déconnecter</button></div></div>`;
     root.querySelectorAll('[data-pp-action="logout"]').forEach((button) => button.addEventListener('click', (event) => {
       event.stopPropagation();
       void logout();
@@ -741,6 +762,15 @@
       if (PUBLIC_EMPLOYEE_FIELDS.has(key)) publicData[key] = value;
       else privateData[key] = value;
     });
+    // Le volume hebdomadaire nécessaire au planning n'expose ni salaire ni
+    // contenu contractuel : seuls les nombres et dates utiles au calcul sont publics.
+    publicData.planningContractHours = Number(employee?.planningContractHours ?? employee?.maxH) || 35;
+    const planningAmendments = Array.isArray(employee?.amendments) && employee.amendments.length
+      ? employee.amendments
+      : (Array.isArray(employee?.planningContractAmendments) ? employee.planningContractAmendments : []);
+    publicData.planningContractAmendments = planningAmendments
+      .filter((item) => Number.isFinite(Number(item?.hours)) && item?.start)
+      .map((item) => ({ start: item.start, end: item.end || '', hours: Number(item.hours) }));
     return { publicData, privateData };
   }
 
@@ -902,18 +932,22 @@
 
   async function fetchRemoteState() {
     const organizationId = App.context.organization_id;
-    const [sitesResult, employeesResult, privateResult, recordsResult] = await Promise.all([
+    const [sitesResult, employeesResult, privateResult, selfServiceResult, recordsResult] = await Promise.all([
       App.client.from('establishments').select('*').eq('organization_id', organizationId).order('name'),
       App.client.from('employees').select('*').eq('organization_id', organizationId).order('created_at'),
       App.client.from('employee_private_data').select('*').eq('organization_id', organizationId),
+      (App.can('employees', 'create_sensitive') || App.can('employees', 'update_sensitive'))
+        ? App.client.from('employee_self_service').select('*').eq('organization_id', organizationId)
+        : Promise.resolve({ data: [], error: null }),
       App.client.from('business_records').select('*').eq('organization_id', organizationId).is('deleted_at', null).order('updated_at')
     ]);
     tableError(sitesResult.error, 'Établissements');
     tableError(employeesResult.error, 'Salariés');
     tableError(privateResult.error, 'Données RH privées');
+    tableError(selfServiceResult.error, 'Préférences de notification');
     tableError(recordsResult.error, 'Données métier');
     return {
-      sites: sitesResult.data || [], employees: employeesResult.data || [], privateData: privateResult.data || [],
+      sites: sitesResult.data || [], employees: employeesResult.data || [], privateData: privateResult.data || [], selfService: selfServiceResult.data || [],
       records: recordsResult.data || []
     };
   }
@@ -931,9 +965,10 @@
     const sites = remote.sites.map((site) => {
       const localId = site.legacy_id || `site-${site.id}`;
       siteByDbId.set(site.id, localId);
-      return { id: localId, name: site.name, address: site.address || site.data?.address || '', icon: site.data?.icon || '🏪', ...site.data };
+      return { id: localId, cloudEstablishmentId: site.id, name: site.name, address: site.address || site.data?.address || '', icon: site.data?.icon || '🏪', ...site.data };
     });
     const privateByEmployee = new Map(remote.privateData.map((item) => [item.employee_id, item.data || {}]));
+    const selfServiceByEmployee = new Map((remote.selfService || []).map((item) => [item.employee_id, item]));
     const employeeByDbId = new Map();
     const employees = remote.employees.map((employee) => {
       const localId = employee.legacy_id || `employee-${employee.id}`;
@@ -945,8 +980,14 @@
         cloudEmployeeId: employee.id,
         name: employee.display_name || [employee.first_name, employee.last_name].filter(Boolean).join(' ') || localId,
         site: siteByDbId.get(employee.establishment_id) || (employee.public_data || {}).site || '',
+        cloudEstablishmentId: employee.establishment_id,
         archived: employee.employment_status !== 'active'
       };
+      const selfService = selfServiceByEmployee.get(employee.id);
+      if (selfService) {
+        record.email = selfService.planning_notification_email || selfService.personal_email || record.email || '';
+        record.planningEmailEnabled = selfService.planning_email_enabled !== false;
+      }
       if (typeof normalizeEmployeeRecord === 'function') return normalizeEmployeeRecord(record);
       return record;
     });
@@ -1098,6 +1139,22 @@
       if (privateRows.length) {
         const result = await App.client.from('employee_private_data').upsert(privateRows, { onConflict: 'employee_id' });
         tableError(result.error, 'Données RH privées');
+      }
+    }
+    if (App.planningPublicationsAvailable === true && (App.can('employees', 'create_sensitive') || App.can('employees', 'update_sensitive'))) {
+      const notificationRows = (snapshot.employees || []).map((employee) => {
+        const employeeId = employeeMap.get(String(employee?.id));
+        if (!employeeId) return null;
+        return {
+          employee_id: employeeId,
+          organization_id: organizationId,
+          planning_notification_email: String(employee?.email || '').trim() || null,
+          planning_email_enabled: employee?.planningEmailEnabled !== false
+        };
+      }).filter(Boolean);
+      if (notificationRows.length) {
+        const result = await App.client.from('employee_self_service').upsert(notificationRows, { onConflict: 'employee_id' });
+        tableError(result.error, 'Préférences de notification du planning');
       }
     }
     const currentRecords = await App.client.from('business_records')
@@ -1252,6 +1309,9 @@
       refresh();
       void refreshPermissions();
     };
+    const refreshUsers = () => {
+      if (typeof curView !== 'undefined' && curView === 'users') void loadUsersView();
+    };
     App.realtimeChannel = App.client.channel(`plannipro:${organizationId}:${App.user.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `organization_id=eq.${organizationId}` }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'business_records', filter: `organization_id=eq.${organizationId}` }, refresh)
@@ -1259,6 +1319,7 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'roles', filter: `organization_id=eq.${organizationId}` }, refreshPermissions)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'role_permissions' }, refreshPermissions)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_permissions', filter: `organization_id=eq.${organizationId}` }, refreshPermissions)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'invitations', filter: `organization_id=eq.${organizationId}` }, refreshUsers)
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') App.status('Synchronisé en direct', 'ok');
       });
@@ -1400,6 +1461,7 @@
       }
     });
     protectFunction('openTimeClockApp', { module: 'pointage', action: 'edit_schedule' });
+    protectFunction('openTimeClockManagement', { module: 'clock_devices', action: 'view' });
     protectFunction('updatePunch', { module: 'pointage', action: 'correct' });
     protectFunction('updatePunchPause', { module: 'pointage', action: 'correct' });
     protectFunction('setPtValidated', { module: 'pointage', action: 'validate' });
@@ -1442,16 +1504,18 @@
     if (!root || !App.context) return;
     try {
       const organizationId = App.context.organization_id;
-      const [membersResult, invitationsResult, rolesResult, establishmentsResult] = await Promise.all([
+      const [membersResult, invitationsResult, rolesResult, establishmentsResult, permissionsResult] = await Promise.all([
         App.client.from('organization_members').select('id,user_id,role_id,status,primary_establishment_id,employee_id,invited_at,activated_at,last_seen_at,profiles(full_name,email),roles(id,key,label,rank,is_read_only,is_active),establishments(name)').eq('organization_id', organizationId).order('created_at'),
-        App.client.from('invitations').select('id,email,status,expires_at,created_at,roles(label),establishments(name)').eq('organization_id', organizationId).order('created_at', { ascending: false }),
+        App.client.from('invitations').select('id,email,first_name,last_name,status,expires_at,created_at,roles(label),establishments(name)').eq('organization_id', organizationId).order('created_at', { ascending: false }),
         App.client.from('roles').select('*').eq('organization_id', organizationId).order('rank', { ascending: false }),
-        App.client.from('establishments').select('id,name').eq('organization_id', organizationId).order('name')
+        App.client.from('establishments').select('id,name').eq('organization_id', organizationId).order('name'),
+        App.client.from('permissions').select('key,module,action,label').order('module').order('action')
       ]);
       tableError(membersResult.error, 'Utilisateurs');
       tableError(invitationsResult.error, 'Invitations');
       tableError(rolesResult.error, 'Rôles');
       tableError(establishmentsResult.error, 'Établissements');
+      tableError(permissionsResult.error, 'Permissions');
       const members = membersResult.data || [];
       const invitations = invitationsResult.data || [];
       const roles = rolesResult.data || [];
@@ -1473,7 +1537,8 @@
         const actions = canManageInvitation
           ? '<button class="btn btn-outline btn-sm" data-pp-user-action="resend-invitation" data-invitation-id="' + escapeHtml(invitation.id) + '">Renvoyer</button> <button class="btn btn-danger btn-sm" data-pp-user-action="cancel-invitation" data-invitation-id="' + escapeHtml(invitation.id) + '">Annuler</button>'
           : '—';
-        return `<tr><td>${escapeHtml(invitation.email)}</td><td>${escapeHtml(invitation.roles?.label || '—')}</td><td>${escapeHtml(invitation.establishments?.name || 'Tous périmètres')}</td><td><span class="pp-users-status invited">${escapeHtml(invitation.status)}</span></td><td>${new Date(invitation.expires_at).toLocaleDateString('fr-FR')}</td><td>${actions}</td></tr>`;
+        const identity = [invitation.first_name, invitation.last_name].filter(Boolean).join(' ');
+        return `<tr><td>${identity ? `<strong>${escapeHtml(identity)}</strong><br>` : ''}${escapeHtml(invitation.email)}</td><td>${escapeHtml(invitation.roles?.label || '—')}</td><td>${escapeHtml(invitation.establishments?.name || 'Tous périmètres')}</td><td><span class="pp-users-status invited">${escapeHtml(invitation.status)}</span></td><td>${new Date(invitation.expires_at).toLocaleDateString('fr-FR')}</td><td>${actions}</td></tr>`;
       }).join('') || '<tr><td colspan="6">Aucune invitation en attente.</td></tr>';
       const roleButton = App.can('users','manage_roles') ? '<button class="btn btn-outline" type="button" data-pp-user-action="roles">Rôles et permissions</button> ' : '';
       const inviteButton = App.can('users','invite') ? '<button class="btn btn-primary" type="button" data-pp-user-action="invite">Inviter un utilisateur</button>' : '';
@@ -1481,6 +1546,7 @@
       root.dataset.roles = JSON.stringify(roles);
       root.dataset.establishments = JSON.stringify(establishmentsResult.data || []);
       root.dataset.members = JSON.stringify(members);
+      root.dataset.permissions = JSON.stringify(permissionsResult.data || []);
     } catch (error) {
       root.innerHTML = '<div class="pp-users-card"><h3>Impossible de charger les droits</h3><p style="padding:0 16px 16px">' + escapeHtml(error.message || 'Erreur inconnue') + '</p></div>';
     }
@@ -1529,9 +1595,10 @@
       return {
         roles: JSON.parse(root?.dataset.roles || '[]'),
         establishments: JSON.parse(root?.dataset.establishments || '[]'),
-        members: JSON.parse(root?.dataset.members || '[]')
+        members: JSON.parse(root?.dataset.members || '[]'),
+        permissions: JSON.parse(root?.dataset.permissions || '[]')
       };
-    } catch (_) { return { roles: [], establishments: [], members: [] }; }
+    } catch (_) { return { roles: [], establishments: [], members: [], permissions: [] }; }
   }
 
   document.addEventListener('click', (event) => {
@@ -1559,27 +1626,32 @@
 
   function openInviteDialog() {
     if (!App.require('users', 'invite')) return;
-    const { roles, establishments } = getUsersData();
+    const { roles, establishments, permissions } = getUsersData();
     const canManagePermissions = App.can('users', 'manage_permissions');
     const roleOptions = roles.filter((role) => role.key !== 'owner' && role.is_active !== false)
       .filter((role) => App.context?.role_key === 'owner' || Number(role.rank) < Number(App.context?.role_rank || 0))
       .map((role) => `<option value="${escapeHtml(role.id)}">${escapeHtml(role.label)}</option>`).join('');
     const establishmentOptions = '<option value="">Tous les établissements autorisés</option>' + establishments.map((establishment) => `<option value="${escapeHtml(establishment.id)}">${escapeHtml(establishment.name)}</option>`).join('');
     const employeeOptions = '<option value="">Choisir un salarié lié</option>' + S.employees.filter((employee) => !employee.archived).map((employee) => `<option value="${escapeHtml(employee.cloudEmployeeId || '')}" ${employee.cloudEmployeeId ? '' : 'disabled'}>${escapeHtml(employee.name || 'Salarié')}${employee.cloudEmployeeId ? '' : ' · synchronisation requise'}</option>`).join('');
-    const scopeEditor = canManagePermissions ? '<label>Équipe / service (facultatif)<input name="team_id" maxlength="80" placeholder="ex. Boulangerie"></label>' : '';
-    const dialog = openDialog(`<h2>Inviter un utilisateur</h2><p>Le rôle et le périmètre sont appliqués par les règles RLS lors de l’acceptation.</p><form id="pp-invite-form"><div class="pp-dialog-grid"><label>E-mail<input type="email" name="email" required autocomplete="email"></label><label>Rôle<select name="role_id" required>${roleOptions}</select></label><label>Salarié lié (obligatoire pour le rôle Salarié)<select name="employee_id">${employeeOptions}</select></label><label>Établissement principal<select name="establishment_id" ${canManagePermissions ? '' : 'required'}>${establishmentOptions}</select></label>${scopeEditor}<label>Expiration<input type="date" name="expires_at" min="${new Date().toISOString().slice(0,10)}"></label></div>${dialogButtons('Envoyer l’invitation')}</form>`);
+    const scopeEditor = canManagePermissions ? '<label>Services autorisés (facultatif)<input name="service_ids" maxlength="240" placeholder="ex. Boulangerie, Caisse"></label>' : '';
+    const permissionOptions = canManagePermissions ? permissions
+      .filter((permission) => !DEPRECATED_PERMISSIONS.has(permission.key) && App.can(permission.module, permission.action))
+      .map((permission) => `<label><input type="checkbox" name="permission_key" value="${escapeHtml(permission.key)}">${escapeHtml(permission.label)}</label>`).join('') : '';
+    const permissionEditor = permissionOptions ? `<div style="grid-column:1/-1"><strong style="font-size:12px">Permissions complémentaires</strong><div class="pp-permission-grid" style="margin-top:8px">${permissionOptions}</div></div>` : '';
+    const dialog = openDialog(`<h2>Inviter un collaborateur</h2><p>L’entreprise est imposée par l’invitation. Le rôle, les services, le périmètre et les permissions complémentaires sont vérifiés par les RPC et les règles RLS.</p><form id="pp-invite-form"><div class="pp-dialog-grid"><label>Prénom<input name="first_name" required maxlength="80" autocomplete="given-name"></label><label>Nom<input name="last_name" required maxlength="80" autocomplete="family-name"></label><label>E-mail<input type="email" name="email" required autocomplete="email"></label><label>Rôle<select name="role_id" required>${roleOptions}</select></label><label>Salarié lié (obligatoire pour le rôle Salarié)<select name="employee_id">${employeeOptions}</select></label><label>Établissement principal<select name="establishment_id" ${canManagePermissions ? '' : 'required'}>${establishmentOptions}</select></label>${scopeEditor}<label>Expiration<input type="date" name="expires_at" min="${new Date().toISOString().slice(0,10)}"></label>${permissionEditor}</div>${dialogButtons('Envoyer l’invitation')}</form>`);
     dialog.querySelector('#pp-invite-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
       const establishmentId = String(form.get('establishment_id') || '');
-      const team = String(form.get('team_id') || '').trim();
+      const services = String(form.get('service_ids') || '').split(',').map((value) => value.trim()).filter(Boolean);
       const role = roles.find((item) => item.id === String(form.get('role_id') || ''));
       const employeeId = String(form.get('employee_id') || '') || null;
       if (role?.key === 'employee' && !employeeId) { safeToast('Choisissez le salarié correspondant avant d’inviter ce compte.', 'err'); return; }
       const scopes = role?.key === 'employee' ? []
         : !canManagePermissions ? (establishmentId ? [{ scope_type: 'establishment', establishment_id: establishmentId }] : [])
-          : team ? [{ scope_type: 'team', team_id: team, establishment_id: establishmentId || null }]
+          : services.length ? services.map((serviceId) => ({ scope_type: 'service', service_id: serviceId, establishment_id: establishmentId || null }))
             : establishmentId ? [{ scope_type: 'establishment', establishment_id: establishmentId }] : [{ scope_type: 'organization' }];
+      const permissionOverrides = canManagePermissions ? form.getAll('permission_key').map((permissionKey) => ({ permission_key: String(permissionKey), effect: 'grant' })) : [];
       const date = String(form.get('expires_at') || '');
       const expiresAt = date ? new Date(`${date}T23:59:59`).toISOString() : undefined;
       const submit = event.currentTarget.querySelector('[type="submit"]');
@@ -1588,12 +1660,14 @@
         const { data, error } = await App.client.functions.invoke('invite-user', {
           body: {
             organization_id: App.context.organization_id,
+            first_name: String(form.get('first_name') || '').trim(),
+            last_name: String(form.get('last_name') || '').trim(),
             email: String(form.get('email') || ''),
             role_id: String(form.get('role_id') || ''),
             primary_establishment_id: establishmentId || null,
             employee_id: employeeId,
             scopes,
-            permission_overrides: [],
+            permission_overrides: permissionOverrides,
             expires_at: expiresAt
           }
         });
