@@ -118,11 +118,11 @@ body{font-family:var(--ff);background:var(--bg);color:var(--tx1);font-size:13px;
 .ar-warn{background:#FFFBEB;color:#92400E;border-bottom:1px solid #FDE68A}
 .ar-error{background:#FEF2F2;color:#991B1B;border-bottom:1px solid #FECACA}
 /* PLANNING GRID */
-.grid-wrap{flex:1;overflow:auto;min-width:0}
+.grid-wrap{flex:1;overflow:auto;min-width:0;scroll-padding-block:var(--head-h) 40px}
 .plan-grid{display:grid;width:100%;min-width:1000px;grid-template-columns:clamp(168px,11vw,210px) repeat(7,minmax(104px,1fr)) clamp(76px,5vw,96px);background:var(--white)}
 .gh-corner{position:sticky;top:0;left:0;z-index:30;background:var(--white);border-right:2px solid var(--bd2);border-bottom:2px solid var(--bd2);height:var(--head-h);display:flex;align-items:center;padding:0 13px}
 .gh-corner-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--tx3)}
-.gh-day{position:sticky;top:0;z-index:20;background:var(--white);border-bottom:2px solid var(--bd2);border-right:1px solid var(--bd1);height:var(--head-h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;transition:background .15s;position:relative}
+.gh-day{position:sticky;top:0;z-index:20;background:var(--white);border-bottom:2px solid var(--bd2);border-right:1px solid var(--bd1);height:var(--head-h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;transition:background .15s}
 .gh-day:hover{background:var(--off)}
 .gh-day.td{background:var(--ind-lt)}
 .gh-day.td .gh-dn,.gh-day.td .gh-num{color:var(--ind)}
@@ -173,10 +173,10 @@ body{font-family:var(--ff);background:var(--bg);color:var(--tx1);font-size:13px;
 .gr-add:hover{background:var(--ind-lt)}
 .gr-add svg{width:13px;height:13px}
 .gr-add-blank{background:var(--white);border-top:1px dashed var(--bd2);border-right:1px solid var(--bd1);height:42px}
-.gr-fc-emp{position:sticky;left:0;z-index:10;background:var(--off);border-right:2px solid var(--bd2);border-top:2px solid var(--bd2);height:40px;display:flex;align-items:center;padding:0 13px}
+.gr-fc-emp{position:sticky;left:0;bottom:0;z-index:30;background:var(--off);border-right:2px solid var(--bd2);border-top:2px solid var(--bd2);height:40px;display:flex;align-items:center;padding:0 13px;box-shadow:0 -3px 7px rgba(21,31,57,.08)}
 .gr-fc-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--tx2)}
-.gr-fc-day{background:var(--off);border-top:2px solid var(--bd2);border-right:1px solid var(--bd1);height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
-.gr-fc-tot{background:var(--off);border-top:2px solid var(--bd2);border-left:1px solid var(--bd1);height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+.gr-fc-day{position:sticky;bottom:0;z-index:15;background:var(--off);border-top:2px solid var(--bd2);border-right:1px solid var(--bd1);height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;box-shadow:0 -3px 7px rgba(21,31,57,.08)}
+.gr-fc-tot{position:sticky;right:0;bottom:0;z-index:30;background:var(--off);border-top:2px solid var(--bd2);border-left:1px solid var(--bd1);height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;box-shadow:-2px -3px 7px rgba(21,31,57,.09)}
 .fc-h{font-size:12px;font-weight:800;color:var(--tx1)}
 .fc-c{font-size:10px;font-weight:500;color:var(--tx2)}
 .grid-empty{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;gap:10px;color:var(--tx3);text-align:center}
@@ -426,6 +426,7 @@ body{font-family:var(--ff);background:var(--bg);color:var(--tx1);font-size:13px;
 .dg-hours-row{height:52px;display:flex;border-bottom:2px solid var(--bd2);position:sticky;top:0;z-index:25;background:var(--white)}
 .dg-hour-cell{width:80px;flex-shrink:0;border-right:1px solid var(--bd1);display:flex;align-items:flex-end;padding-bottom:6px;justify-content:center}
 .dg-hour-lbl{font-size:10px;font-weight:700;color:var(--tx3);letter-spacing:.3px}
+.dg-day-end-label{position:absolute;right:4px;bottom:6px;transform:translateX(50%);font-size:10px;font-weight:700;color:var(--tx3);letter-spacing:.3px;white-space:nowrap}
 .dg-row{height:64px;border-bottom:1px solid var(--bd1);display:flex;position:relative;background:var(--white)}
 .dg-row:hover{background:rgba(79,99,231,.015)}
 .dg-row.drag-over{background:rgba(79,99,231,.06)!important}
@@ -2192,6 +2193,11 @@ function wkDays(m) {
   });
 }
 function today() { return new Date().toISOString().split('T')[0]; }
+function weekReferenceDay() {
+  const days = wkDays();
+  const now = today();
+  return days.includes(now) ? now : (days[0] || now);
+}
 function fd(s) {
   const d = new Date(s+'T12:00:00');
   return {name: d.toLocaleDateString('fr-FR',{weekday:'short'}).replace('.','').toUpperCase(), num: d.getDate()};
@@ -4685,8 +4691,8 @@ function goDayToday() { currentDay = today(); renderDayView(); }
 /* ═══════════════════════════════════════════════════════
    DAY VIEW RENDER
 ═══════════════════════════════════════════════════════ */
-const DAY_START = 6;   // 06:00
-const DAY_END   = 23;  // 23:00
+const DAY_START = 0;   // 00:00
+const DAY_END   = 24;  // 00:00 the following day
 const HOUR_W    = 80;  // px per hour
 const TOTAL_W   = (DAY_END - DAY_START) * HOUR_W;
 
@@ -4695,13 +4701,13 @@ function timeToX(timeStr) {
   return ((h + m/60) - DAY_START) * HOUR_W;
 }
 function xToTime(x) {
-  const totalH = DAY_START + x / HOUR_W;
+  const totalH = Math.max(DAY_START, Math.min(DAY_END - 0.25, DAY_START + x / HOUR_W));
   const h = Math.floor(totalH);
   const m = Math.round((totalH - h) * 60 / 15) * 15; // snap to 15min
   const hh = Math.max(DAY_START, Math.min(DAY_END-1, h));
   const mm = m >= 60 ? 0 : m;
   const hFinal = m >= 60 ? hh+1 : hh;
-  return String(Math.max(DAY_START, Math.min(DAY_END, hFinal))).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
+  return String(Math.max(DAY_START, Math.min(DAY_END-1, hFinal))).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
 }
 
 function renderDayView() {
@@ -4735,6 +4741,10 @@ function renderDayView() {
     cell.innerHTML = '<span class="dg-hour-lbl">' + String(h).padStart(2,'0') + 'h</span>';
     hoursRow.appendChild(cell);
   }
+  const endMarker = document.createElement('span');
+  endMarker.className = 'dg-day-end-label';
+  endMarker.textContent = '00h';
+  hoursRow.appendChild(endMarker);
   inner.appendChild(hoursRow);
 
   // Now line
@@ -4799,7 +4809,7 @@ function renderDayView() {
       hcell.onclick = (e) => {
         e.stopPropagation();
         const clickH = String(h).padStart(2,'0');
-        const endH   = String(Math.min(DAY_END, h+8)).padStart(2,'0');
+        const endH   = String((h+8) % 24).padStart(2,'0');
         openShiftModal(emp.id, d, null, clickH+':00', endH+':00');
       };
       row.appendChild(hcell);
@@ -4808,7 +4818,9 @@ function renderDayView() {
     // Shift bars
     dayShifts.forEach(sh => {
       const x     = timeToX(sh.s);
-      const w     = timeToX(sh.e) - x;
+      let w       = timeToX(sh.e) - x;
+      if (w < 0) w += TOTAL_W;
+      w = Math.min(w, TOTAL_W - x);
       const cost  = sCost(sh);
       const shHrs = hrs(sh.s, sh.e);
 
@@ -4832,6 +4844,11 @@ function renderDayView() {
       else                    { topLine=sh.s+'–'+sh.e; midLine=sh.note||emp.role||''; botLine=shHrs.toFixed(1)+'h'+(cost?' · '+cost.toFixed(0)+'€':'');; const pl=pauseLabel(sh); if(pl) botLine+=' (⏸'+pl+')'; }
       const commentBadge=sh.comment?'<div class="shift-comment-dot"></div>':'';
       bar.innerHTML=commentBadge+'<div class="dg-shift-inner"><div class="dg-shift-time">'+topLine+'</div>'+(midLine?'<div class="dg-shift-role">'+midLine+'</div>':'')+'<div class="dg-shift-hrs">'+botLine+'</div></div>';
+      // Keep the label readable when a shift begins before the visible 06:00 timeline.
+      if (x < 0) {
+        const shiftInner = bar.querySelector('.dg-shift-inner');
+        if (shiftInner) shiftInner.style.transform = 'translateX(' + (-x) + 'px)';
+      }
       const dayDelBtn=document.createElement('button');
       dayDelBtn.className='dg-shift-del'; dayDelBtn.textContent='✕';
       dayDelBtn.onclick=ev=>{ev.stopPropagation();deleteShift(sh.id);renderDayView();};
@@ -4916,9 +4933,9 @@ function renderDayView() {
       const newStart = xToTime(Math.max(0, snappedX));
       const duration = hrs(sh2.s, sh2.e);
       const startH = parseFloat(newStart.split(':')[0]) + parseFloat(newStart.split(':')[1])/60;
-      const endH   = startH + duration;
-      const endHH  = Math.floor(Math.min(DAY_END, endH));
-      const endMM  = Math.round((Math.min(DAY_END, endH) - endHH) * 60);
+      const endTotalMinutes = Math.round((((startH + duration) % 24) * 60) / 15) * 15 % 1440;
+      const endHH  = Math.floor(endTotalMinutes / 60);
+      const endMM  = endTotalMinutes % 60;
       const newEnd = String(endHH).padStart(2,'0') + ':' + String(endMM).padStart(2,'0');
 
       const mode=planningDropMode(e,drag);
@@ -5476,14 +5493,15 @@ document.addEventListener('mousemove', e => {
   const SNAP = HOUR_W / 4; // 15-min snap
 
   if (side === 'right') {
-    const newW = Math.max(SNAP, Math.round((origW + dx) / SNAP) * SNAP);
+    const maxW = TOTAL_W - origL;
+    const newW = Math.min(maxW, Math.max(SNAP, Math.round((origW + dx) / SNAP) * SNAP));
     const newEndH = DAY_START + (origL + newW) / HOUR_W;
     const newEndHH = Math.max(DAY_START + 0.25, Math.min(DAY_END, newEndH));
     const h = Math.floor(newEndHH);
     const m = Math.round((newEndHH - h) * 60);
     const mFinal = m >= 60 ? 0 : m;
     const hFinal = m >= 60 ? h + 1 : h;
-    const newEndStr = String(Math.min(DAY_END, hFinal)).padStart(2,'0') + ':' + String(mFinal).padStart(2,'0');
+    const newEndStr = String(hFinal % 24).padStart(2,'0') + ':' + String(mFinal).padStart(2,'0');
     bar.style.width = newW + 'px';
     sh.e = newEndStr;
   } else {
@@ -6651,7 +6669,6 @@ renderPlanning = function() {
         lockWrap.onmouseleave = function() { this.style.opacity = isDayLocked(d)?'1':'.45'; };
         lockWrap.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
         lockWrap.onclick = function(e) { e.stopPropagation(); toggleDayLock(d); };
-        cell.style.position = 'relative';
         cell.appendChild(lockWrap);
       }
       var svg = lockWrap.querySelector('svg');
@@ -6805,6 +6822,7 @@ document.addEventListener('keydown', function(e) {
 ═══════════════════════════════════════════════════════ */
 setPlanView = function(mode) {
   mode = ['week','day','month'].includes(mode) ? mode : 'week';
+  const previousMode = planViewMode;
   planViewMode = mode;
 
   [['vtWeek','week'],['vtDay','day'],['vtMonth','month']].forEach(([id, value]) => {
@@ -6826,12 +6844,13 @@ setPlanView = function(mode) {
   });
 
   if (mode === 'day') {
-    if (!currentDay) currentDay = today();
+    if (previousMode === 'week' || !currentDay) currentDay = weekReferenceDay();
     renderDayView();
   } else if (mode === 'month') {
-    if (!currentMonth) {
-      const now = new Date();
-      currentMonth = {year: now.getFullYear(), month: now.getMonth()};
+    if (!currentMonth || previousMode !== 'month') {
+      const refDay = previousMode === 'day' && currentDay ? currentDay : weekReferenceDay();
+      const refDate = new Date(refDay + 'T12:00:00');
+      currentMonth = {year: refDate.getFullYear(), month: refDate.getMonth()};
     }
     renderMonthView();
     setTimeout(scrollMonthToToday, 0);
