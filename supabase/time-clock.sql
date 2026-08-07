@@ -628,6 +628,7 @@ begin
     v_payload := v_payload || jsonb_build_object('adjustment', v_existing_payload -> 'adjustment');
   end if;
 
+  perform set_config('app.plannipro_time_clock_rebuild', 'on', true);
   insert into public.business_records (
     organization_id, establishment_id, employee_id, record_type, legacy_id, payload, deleted_at
   ) values (
@@ -638,6 +639,7 @@ begin
     employee_id = excluded.employee_id,
     payload = excluded.payload,
     deleted_at = null;
+  perform set_config('app.plannipro_time_clock_rebuild', 'off', true);
 
   return v_payload;
 end;

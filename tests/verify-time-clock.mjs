@@ -6,6 +6,7 @@ const root = new URL('..', import.meta.url);
 const read = (file) => fs.readFileSync(new URL(file, root), 'utf8');
 const baseSql = read('supabase/time-clock.sql');
 const secureSql = read('supabase/time-clock-secure-activation.sql');
+const badgePermissionFixSql = read('supabase/time-clock-badge-permission-fix.sql');
 const kiosk = read('pointeuse.js');
 const kioskHtml = read('pointeuse.html');
 const cloud = read('plannipro-cloud.js');
@@ -50,6 +51,13 @@ includes(secureSql, "p_offline_proof is not null or p_pin is null", 'offline bad
 includes(secureSql, "Code incorrect ou indisponible", 'non-enumerating PIN error');
 includes(secureSql, 'attempt_window_started_at', 'attempt window');
 includes(secureSql, 'lock_level', 'progressive lock');
+includes(baseSql, "set_config('app.plannipro_time_clock_rebuild', 'on', true)", 'trusted summary rebuild context');
+includes(baseSql, "set_config('app.plannipro_time_clock_rebuild', 'off', true)", 'summary rebuild context cleanup');
+includes(badgePermissionFixSql, 'begin;', 'badge permission fix transaction start');
+includes(badgePermissionFixSql, 'commit;', 'badge permission fix transaction commit');
+includes(badgePermissionFixSql, "coalesce(current_setting('app.plannipro_time_clock_rebuild', true), 'off') = 'on'", 'badge summary trigger exemption');
+includes(badgePermissionFixSql, "old.payload->>'source' = 'external-time-clock'", 'badge exemption restricted to time-clock records');
+includes(badgePermissionFixSql, 'revoke all on function public.rebuild_time_clock_day_summary', 'summary builder remains private');
 
 includes(kiosk, "DEVICE_STORAGE_KEY = 'plannipro_clock_device_token'", 'stable browser token key');
 includes(kiosk, "crypto.getRandomValues(new Uint8Array(32))", 'client token generation');
