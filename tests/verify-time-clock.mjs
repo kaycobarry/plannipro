@@ -62,6 +62,9 @@ assert.ok(!kiosk.includes('PBKDF2'), 'Kiosk must not verify PINs locally');
 includes(kiosk, "await dbSet('cache', { securityMigrationAt: nowIso() })", 'legacy PIN verifier cache is sanitized');
 assert.ok(!/localStorage\s*\./.test(kiosk), 'No session or PIN in localStorage');
 assert.ok(/persistSession:\s*false/.test(kiosk), 'Manager session is memory-only');
+assert.ok(/autoRefreshToken:\s*true/.test(kiosk), 'Manager access token refreshes while the management screen is open');
+includes(kiosk, 'api.auth.refreshSession()', 'expired manager session refresh');
+includes(kiosk, 'headers: { Authorization: `Bearer ${await managerAccessToken(forceRefresh)}` }', 'explicit Edge Function bearer token');
 
 includes(kiosk, 'delete_or_archive_time_clock_device', 'conditional delete/archive UI');
 includes(kiosk, "p_status: 'revoked'", 'explicit revoke UI');
@@ -80,7 +83,7 @@ includes(index, "showSP('clocks',this)", 'Settings → Time clocks tab');
 includes(index, 'openTimeClockManagement');
 includes(cloud, "module: 'clock_devices', action: 'view'", 'management UI permission guard');
 includes(kioskHtml, './pointeuse.webmanifest');
-includes(shell, 'plannipro-shell-v33');
+includes(shell, 'plannipro-shell-v34');
 includes(shell, 'requestUrl.hostname.endsWith("supabase.co")');
 
 assert.ok(!/SUPABASE_SERVICE_ROLE_KEY|service_role\s*[:=]/i.test(kiosk), 'No service role secret in browser');

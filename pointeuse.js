@@ -16,7 +16,9 @@
   }
 
   const api = window.supabase.createClient(config.url, config.publishableKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    // La session d'administration reste uniquement en mémoire, mais son jeton
+    // doit être rafraîchi tant que l'écran de gestion est ouvert.
+    auth: { persistSession: false, autoRefreshToken: true, detectSessionInUrl: false }
   });
 
   const state = {
@@ -43,6 +45,7 @@
 
   function errorMessage(error) {
     const message = String(error?.message || error?.userMessage || 'Opération impossible pour le moment.');
+    if (/authentication required|invalid or expired session|session de gestion.*expir/i.test(message)) return 'Votre session de gestion a expiré. Reconnectez-vous.';
     if (/invalid, expired or already used|activation code/i.test(message)) return 'Le code d’activation est invalide, expiré ou déjà utilisé.';
     if (/not authorized|permission|JWT|row-level|rls/i.test(message)) return 'Cette action n’est pas autorisée pour ce profil.';
     if (/no longer active|time clock unavailable/i.test(message)) return 'Cette pointeuse a été désactivée par un responsable.';
@@ -137,6 +140,34 @@
     const parsed = data && typeof data === 'string' ? JSON.parse(data) : data;
     if (parsed && typeof parsed === 'object' && parsed.error) throw appError(parsed.error);
     return parsed;
+  }
+
+  async function managerAccessToken(forceRefresh) {
+    let response = forceRefresh ? await api.auth.refreshSession() : await api.auth.getSession();
+    if (response.error) throw response.error;
+    let session = response.data?.session;
+    const expiresSoon = Number(session?.expires_at || 0) * 1000 <= Date.now() + 60_000;
+    if (session && !forceRefresh && expiresSoon) {
+      response = await api.auth.refreshSession();
+      if (response.error) throw response.error;
+      session = response.data?.session;
+    }
+    if (!session?.access_token) throw appError('Votre session de gestion a expiré. Reconnectez-vous.');
+    return session.access_token;
+  }
+
+  async function invokeManagerFunction(name, body) {
+    const invoke = async (forceRefresh) => api.functions.invoke(name, {
+      body,
+      headers: { Authorization: `Bearer ${await managerAccessToken(forceRefresh)}` }
+    });
+    let result = await invoke(false);
+    if (result.error && Number(result.error?.context?.status) === 401) result = await invoke(true);
+    if (result.error) {
+      if (Number(result.error?.context?.status) === 401) throw appError('Votre session de gestion a expiré. Reconnectez-vous.');
+      throw result.error;
+    }
+    return result.data;
   }
 
   function hasPermission(context, key) {
@@ -428,10 +459,9 @@
       state.oneTimeSecret = { kind: 'link', label: 'Lien sécurisé valable 24 heures', value: url.href };
     });
     if (action === 'send-pin-invite') return withBusy(async () => {
-      const { data, error } = await api.functions.invoke('send-clock-pin-invitation', {
-        body: { organization_id: state.organizationId, employee_id: target.dataset.employee }
+      const data = await invokeManagerFunction('send-clock-pin-invitation', {
+        organization_id: state.organizationId, employee_id: target.dataset.employee
       });
-      if (error) throw error;
       if (data?.accept_url) state.oneTimeSecret = { kind: 'link', label: data.warning || 'Lien sécurisé valable 24 heures', value: data.accept_url };
       state.message = { kind: data?.emailed ? 'ok' : '', text: data?.emailed ? 'Invitation envoyée par e-mail.' : (data?.warning || 'Lien créé pour remise manuelle.') };
     });
