@@ -769,7 +769,15 @@ $$;
 drop trigger if exists business_records_enforce_permission on public.business_records;
 create trigger business_records_enforce_permission
   before update on public.business_records
-  for each row execute function public.enforce_business_record_permission();
+  for each row
+  when (not (
+    coalesce(current_setting('app.plannipro_time_clock_rebuild', true), 'off') = 'on'
+    and old.record_type = 'punch'
+    and new.record_type = 'punch'
+    and old.payload->>'source' = 'external-time-clock'
+    and new.payload->>'source' = 'external-time-clock'
+  ))
+  execute function public.enforce_business_record_permission();
 
 create or replace function public.can_access_document(
   p_organization_id uuid,p_establishment_id uuid,p_employee_id uuid,p_action text
