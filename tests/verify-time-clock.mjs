@@ -55,6 +55,7 @@ includes(kiosk, "DEVICE_STORAGE_KEY = 'plannipro_clock_device_token'", 'stable b
 includes(kiosk, "crypto.getRandomValues(new Uint8Array(32))", 'client token generation');
 includes(kiosk, "activate_time_clock_device", 'voluntary activation call');
 includes(kiosk, "verify_time_clock_pin", 'server-side PIN verification');
+assert.ok(!/state\.pin\.length\s*!==\s*6\s*\|\|\s*state\.busy/.test(kiosk), 'PIN validation must not be cancelled by withBusy');
 includes(kiosk, "Connexion indisponible — pointage momentanément impossible.", 'explicit offline refusal');
 assert.ok(!kiosk.includes('register_time_clock_device'), 'Kiosk must never call direct registration');
 assert.ok(!kiosk.includes('offline_hash'), 'Kiosk must never receive a PIN verifier');
@@ -85,7 +86,7 @@ includes(index, "showSP('clocks',this)", 'Settings → Time clocks tab');
 includes(index, 'openTimeClockManagement');
 includes(cloud, "module: 'clock_devices', action: 'view'", 'management UI permission guard');
 includes(kioskHtml, './pointeuse.webmanifest');
-includes(shell, 'plannipro-shell-v34');
+includes(shell, 'plannipro-shell-v35');
 includes(shell, 'requestUrl.hostname.endsWith("supabase.co")');
 
 assert.ok(!/SUPABASE_SERVICE_ROLE_KEY|service_role\s*[:=]/i.test(kiosk), 'No service role secret in browser');

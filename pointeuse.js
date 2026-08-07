@@ -332,7 +332,9 @@
   }
 
   async function verifyPin() {
-    if (state.pin.length !== 6 || state.busy) return;
+    // withBusy() a déjà verrouillé l'interface avant d'appeler cette fonction.
+    // Tester state.busy ici annulait donc systématiquement toute validation.
+    if (state.pin.length !== 6) return;
     if (!navigator.onLine) throw appError('Connexion indisponible — pointage momentanément impossible.');
     state.verified = await callRpc('verify_time_clock_pin', {
       p_device_id: state.device.id, p_device_token: state.deviceToken, p_pin: state.pin

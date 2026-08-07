@@ -91,7 +91,7 @@ includes(migration, 'alter publication supabase_realtime add table public.invita
 includes(cloud, "table: 'invitations'", 'invitation Realtime subscription');
 includes(migration, 'revoke all on function public.bootstrap_company()', 'bootstrap EXECUTE lockdown');
 includes(migration, 'grant execute on function public.bootstrap_company() to authenticated', 'authenticated bootstrap grant');
-includes(shell, 'plannipro-shell-v34', 'new application shell cache');
+includes(shell, 'plannipro-shell-v35', 'new application shell cache');
 
 new vm.Script(cloud, { filename: 'plannipro-cloud.js' });
 new vm.Script(shell, { filename: 'sw.js' });
