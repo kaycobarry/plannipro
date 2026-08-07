@@ -1323,7 +1323,11 @@
     const refresh = () => {
       if (App.syncing) return;
       clearTimeout(App.syncTimer);
-      App.syncTimer = setTimeout(() => { void App.syncNow('realtime'); }, 650);
+      App.syncTimer = setTimeout(() => {
+        void App.syncNow('realtime').then(() => {
+          if (typeof curView !== 'undefined' && curView === 'users') return loadUsersView();
+        });
+      }, 650);
     };
     const refreshAccess = () => {
       refresh();
@@ -1519,6 +1523,20 @@
     void loadUsersView();
   }
 
+  function normalizeInvitationEmail(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function employeeInvitation(employee, invitations) {
+    const cloudEmployeeId = String(employee?.cloudEmployeeId || '');
+    const email = normalizeInvitationEmail(employee?.email);
+    return invitations.find((invitation) => {
+      if (invitation.status !== 'sent') return false;
+      if (cloudEmployeeId && String(invitation.employee_id || '') === cloudEmployeeId) return true;
+      return Boolean(email && normalizeInvitationEmail(invitation.email) === email);
+    }) || null;
+  }
+
   async function loadUsersView() {
     const root = document.getElementById('pp-users-root');
     if (!root || !App.context) return;
@@ -1526,7 +1544,7 @@
       const organizationId = App.context.organization_id;
       const [membersResult, invitationsResult, rolesResult, establishmentsResult, permissionsResult] = await Promise.all([
         App.client.from('organization_members').select('id,user_id,role_id,status,primary_establishment_id,employee_id,invited_at,activated_at,last_seen_at,profiles(full_name,email),roles(id,key,label,rank,is_read_only,is_active),establishments(name)').eq('organization_id', organizationId).order('created_at'),
-        App.client.from('invitations').select('id,email,first_name,last_name,status,expires_at,created_at,roles(label),establishments(name)').eq('organization_id', organizationId).order('created_at', { ascending: false }),
+        App.client.from('invitations').select('id,email,first_name,last_name,employee_id,role_id,primary_establishment_id,status,expires_at,created_at,roles(label),establishments(name)').eq('organization_id', organizationId).order('created_at', { ascending: false }),
         App.client.from('roles').select('*').eq('organization_id', organizationId).order('rank', { ascending: false }),
         App.client.from('establishments').select('id,name').eq('organization_id', organizationId).order('name'),
         App.client.from('permissions').select('key,module,action,label').order('module').order('action')
@@ -1539,6 +1557,7 @@
       const members = membersResult.data || [];
       const invitations = invitationsResult.data || [];
       const roles = rolesResult.data || [];
+      const establishments = establishmentsResult.data || [];
       const membersRows = members.map((member) => {
         const profile = member.profiles || {};
         const role = member.roles || {};
@@ -1560,9 +1579,39 @@
         const identity = [invitation.first_name, invitation.last_name].filter(Boolean).join(' ');
         return `<tr><td>${identity ? `<strong>${escapeHtml(identity)}</strong><br>` : ''}${escapeHtml(invitation.email)}</td><td>${escapeHtml(invitation.roles?.label || '—')}</td><td>${escapeHtml(invitation.establishments?.name || 'Tous périmètres')}</td><td><span class="pp-users-status invited">${escapeHtml(invitation.status)}</span></td><td>${new Date(invitation.expires_at).toLocaleDateString('fr-FR')}</td><td>${actions}</td></tr>`;
       }).join('') || '<tr><td colspan="6">Aucune invitation en attente.</td></tr>';
+      const membersByEmployee = new Map(members.filter((member) => member.employee_id).map((member) => [String(member.employee_id), member]));
+      const membersByEmail = new Map(members.filter((member) => member.profiles?.email).map((member) => [normalizeInvitationEmail(member.profiles.email), member]));
+      const teamRows = (S.employees || []).filter((employee) => employee && !employee.archived).map((employee) => {
+        const cloudEmployeeId = String(employee.cloudEmployeeId || '');
+        const member = (cloudEmployeeId ? membersByEmployee.get(cloudEmployeeId) : null) || membersByEmail.get(normalizeInvitationEmail(employee.email)) || null;
+        const pendingInvitation = employeeInvitation(employee, invitations);
+        const site = (S.sites || []).find((candidate) => String(candidate.id) === String(employee.site || ''));
+        const establishmentId = String(employee.cloudEstablishmentId || site?.cloudEstablishmentId || '');
+        const establishment = establishments.find((candidate) => String(candidate.id) === establishmentId);
+        const scope = [establishment?.name || site?.name || '', employee.team || employee.teamId || employee.service || employee.serviceId || ''].filter(Boolean).join(' · ') || '—';
+        let status = '<span class="pp-users-status">À inviter</span>';
+        let actions = App.can('users', 'invite')
+          ? '<button class="btn btn-primary btn-sm" data-pp-user-action="invite-employee" data-employee-id="' + escapeHtml(String(employee.id || '')) + '">Inviter</button>'
+          : '—';
+        if (!cloudEmployeeId) {
+          status = '<span class="pp-users-status disabled">Synchronisation requise</span>';
+          actions = App.can('users', 'invite')
+            ? '<button class="btn btn-outline btn-sm" type="button" data-pp-user-action="sync-invite-employee" data-employee-id="' + escapeHtml(String(employee.id || '')) + '">Synchroniser et inviter</button>'
+            : '—';
+        } else if (member) {
+          status = '<span class="pp-users-status ' + escapeHtml(member.status) + '">' + escapeHtml(member.status === 'active' ? 'Accès actif' : member.status) + '</span>';
+          actions = 'Compte relié';
+        } else if (pendingInvitation) {
+          status = '<span class="pp-users-status invited">Invitation envoyée</span>';
+          actions = App.can('users', 'invite')
+            ? '<button class="btn btn-outline btn-sm" data-pp-user-action="resend-invitation" data-invitation-id="' + escapeHtml(pendingInvitation.id) + '">Renvoyer l’invitation</button>'
+            : '—';
+        }
+        return `<tr><td><strong>${escapeHtml(employee.name || 'Salarié')}</strong><br><span style="color:#74809a">${escapeHtml(employee.role || 'Salarié')}</span></td><td>${escapeHtml(employee.email || 'E-mail à renseigner')}</td><td>${escapeHtml(scope)}</td><td>${status}</td><td>${actions}</td></tr>`;
+      }).join('') || '<tr><td colspan="5">Aucun salarié actif dans Équipe.</td></tr>';
       const roleButton = App.can('users','manage_roles') ? '<button class="btn btn-outline" type="button" data-pp-user-action="roles">Rôles et permissions</button> ' : '';
       const inviteButton = App.can('users','invite') ? '<button class="btn btn-primary" type="button" data-pp-user-action="invite">Inviter un utilisateur</button>' : '';
-      root.innerHTML = `<div class="pp-users-head"><div><h2>Utilisateurs et droits d’accès</h2><p>${escapeHtml(App.context.organization_name)} · les restrictions sont aussi appliquées par Supabase RLS.</p></div>${roleButton || inviteButton ? '<div>' + roleButton + inviteButton + '</div>' : ''}</div><div class="pp-users-card"><h3>Utilisateurs actifs et accès</h3><div style="overflow:auto"><table class="pp-users-table"><thead><tr><th>Utilisateur</th><th>Rôle</th><th>Établissement</th><th>Statut</th><th>Dernière connexion</th><th>Actions</th></tr></thead><tbody>${membersRows}</tbody></table></div></div><div class="pp-users-card"><h3>Invitations</h3><div style="overflow:auto"><table class="pp-users-table"><thead><tr><th>E-mail</th><th>Rôle</th><th>Établissement</th><th>Statut</th><th>Expiration</th><th>Actions</th></tr></thead><tbody>${invitationRows}</tbody></table></div></div>`;
+      root.innerHTML = `<div class="pp-users-head"><div><h2>Utilisateurs et droits d’accès</h2><p>${escapeHtml(App.context.organization_name)} · les restrictions sont aussi appliquées par Supabase RLS.</p></div>${roleButton || inviteButton ? '<div>' + roleButton + inviteButton + '</div>' : ''}</div><div class="pp-users-card"><h3>Salariés de l’équipe</h3><div style="overflow:auto"><table class="pp-users-table"><thead><tr><th>Salarié</th><th>E-mail</th><th>Établissement / équipe</th><th>Accès</th><th>Action</th></tr></thead><tbody>${teamRows}</tbody></table></div></div><div class="pp-users-card"><h3>Utilisateurs actifs et accès</h3><div style="overflow:auto"><table class="pp-users-table"><thead><tr><th>Utilisateur</th><th>Rôle</th><th>Établissement</th><th>Statut</th><th>Dernière connexion</th><th>Actions</th></tr></thead><tbody>${membersRows}</tbody></table></div></div><div class="pp-users-card"><h3>Invitations</h3><div style="overflow:auto"><table class="pp-users-table"><thead><tr><th>E-mail</th><th>Rôle</th><th>Établissement</th><th>Statut</th><th>Expiration</th><th>Actions</th></tr></thead><tbody>${invitationRows}</tbody></table></div></div>`;
       root.dataset.roles = JSON.stringify(roles);
       root.dataset.establishments = JSON.stringify(establishmentsResult.data || []);
       root.dataset.members = JSON.stringify(members);
@@ -1626,6 +1675,8 @@
     if (!button) return;
     const action = button.dataset.ppUserAction;
     if (action === 'invite') openInviteDialog();
+    if (action === 'invite-employee') openInviteDialog(button.dataset.employeeId);
+    if (action === 'sync-invite-employee') void syncAndInviteEmployee(button.dataset.employeeId, button);
     if (action === 'role') void openRoleAssignmentDialog(button.dataset.memberId);
     if (action === 'permissions') void openPermissionsDialog(button.dataset.memberId);
     if (action === 'scope') void openScopeDialog(button.dataset.memberId);
@@ -1644,21 +1695,42 @@
     return `<div class="pp-dialog-actions"><button class="btn btn-outline" type="button" data-pp-action="close-dialog">Annuler</button><button class="btn btn-primary" type="submit">${escapeHtml(primaryLabel)}</button></div>`;
   }
 
-  function openInviteDialog() {
+  async function syncAndInviteEmployee(employeeId, button) {
+    if (!App.require('users', 'invite') || !employeeId) return;
+    if (button) button.disabled = true;
+    try {
+      const synced = await App.syncNow('prepare-employee-invitation');
+      const employee = (S.employees || []).find((item) => String(item.id) === String(employeeId));
+      if (!synced || !employee?.cloudEmployeeId) throw new Error('La fiche salarié doit être synchronisée avant l’envoi de l’invitation.');
+      await loadUsersView();
+      openInviteDialog(employeeId);
+    } catch (error) {
+      safeToast(error.message || 'Synchronisation impossible avant l’invitation.', 'err');
+    } finally {
+      if (button?.isConnected) button.disabled = false;
+    }
+  }
+
+  function openInviteDialog(selectedEmployeeId) {
     if (!App.require('users', 'invite')) return;
     const { roles, establishments, permissions } = getUsersData();
+    const selectedEmployee = selectedEmployeeId == null ? null : (S.employees || []).find((employee) => String(employee.id) === String(selectedEmployeeId));
+    const selectedIdentity = selectedEmployee ? splitName(selectedEmployee) : { first: '', last: '' };
+    const selectedSite = selectedEmployee ? (S.sites || []).find((site) => String(site.id) === String(selectedEmployee.site || '')) : null;
+    const selectedEstablishmentId = String(selectedEmployee?.cloudEstablishmentId || selectedSite?.cloudEstablishmentId || '');
+    const selectedRoleId = selectedEmployee ? String(roles.find((role) => role.key === 'employee')?.id || '') : '';
     const canManagePermissions = App.can('users', 'manage_permissions');
     const roleOptions = roles.filter((role) => role.key !== 'owner' && role.is_active !== false)
       .filter((role) => App.context?.role_key === 'owner' || Number(role.rank) < Number(App.context?.role_rank || 0))
-      .map((role) => `<option value="${escapeHtml(role.id)}">${escapeHtml(role.label)}</option>`).join('');
-    const establishmentOptions = '<option value="">Tous les établissements autorisés</option>' + establishments.map((establishment) => `<option value="${escapeHtml(establishment.id)}">${escapeHtml(establishment.name)}</option>`).join('');
-    const employeeOptions = '<option value="">Choisir un salarié lié</option>' + S.employees.filter((employee) => !employee.archived).map((employee) => `<option value="${escapeHtml(employee.cloudEmployeeId || '')}" ${employee.cloudEmployeeId ? '' : 'disabled'}>${escapeHtml(employee.name || 'Salarié')}${employee.cloudEmployeeId ? '' : ' · synchronisation requise'}</option>`).join('');
+      .map((role) => `<option value="${escapeHtml(role.id)}" ${selectedRoleId === String(role.id) ? 'selected' : ''}>${escapeHtml(role.label)}</option>`).join('');
+    const establishmentOptions = '<option value="">Tous les établissements autorisés</option>' + establishments.map((establishment) => `<option value="${escapeHtml(establishment.id)}" ${selectedEstablishmentId === String(establishment.id) ? 'selected' : ''}>${escapeHtml(establishment.name)}</option>`).join('');
+    const employeeOptions = '<option value="">Choisir un salarié lié</option>' + S.employees.filter((employee) => !employee.archived).map((employee) => `<option value="${escapeHtml(employee.cloudEmployeeId || '')}" ${employee.cloudEmployeeId ? '' : 'disabled'} ${selectedEmployee && String(selectedEmployee.id) === String(employee.id) ? 'selected' : ''}>${escapeHtml(employee.name || 'Salarié')}${employee.cloudEmployeeId ? '' : ' · synchronisation requise'}</option>`).join('');
     const scopeEditor = canManagePermissions ? '<label>Services autorisés (facultatif)<input name="service_ids" maxlength="240" placeholder="ex. Boulangerie, Caisse"></label>' : '';
     const permissionOptions = canManagePermissions ? permissions
       .filter((permission) => !DEPRECATED_PERMISSIONS.has(permission.key) && App.can(permission.module, permission.action))
       .map((permission) => `<label><input type="checkbox" name="permission_key" value="${escapeHtml(permission.key)}">${escapeHtml(permission.label)}</label>`).join('') : '';
     const permissionEditor = permissionOptions ? `<div style="grid-column:1/-1"><strong style="font-size:12px">Permissions complémentaires</strong><div class="pp-permission-grid" style="margin-top:8px">${permissionOptions}</div></div>` : '';
-    const dialog = openDialog(`<h2>Inviter un collaborateur</h2><p>L’entreprise est imposée par l’invitation. Le rôle, les services, le périmètre et les permissions complémentaires sont vérifiés par les RPC et les règles RLS.</p><form id="pp-invite-form"><div class="pp-dialog-grid"><label>Prénom<input name="first_name" required maxlength="80" autocomplete="given-name"></label><label>Nom<input name="last_name" required maxlength="80" autocomplete="family-name"></label><label>E-mail<input type="email" name="email" required autocomplete="email"></label><label>Rôle<select name="role_id" required>${roleOptions}</select></label><label>Salarié lié (obligatoire pour le rôle Salarié)<select name="employee_id">${employeeOptions}</select></label><label>Établissement principal<select name="establishment_id" ${canManagePermissions ? '' : 'required'}>${establishmentOptions}</select></label>${scopeEditor}<label>Expiration<input type="date" name="expires_at" min="${new Date().toISOString().slice(0,10)}"></label>${permissionEditor}</div>${dialogButtons('Envoyer l’invitation')}</form>`);
+    const dialog = openDialog(`<h2>Inviter un collaborateur</h2><p>L’entreprise est imposée par l’invitation. Le rôle, les services, le périmètre et les permissions complémentaires sont vérifiés par les RPC et les règles RLS.</p><form id="pp-invite-form"><div class="pp-dialog-grid"><label>Prénom<input name="first_name" value="${escapeHtml(selectedIdentity.first)}" required maxlength="80" autocomplete="given-name"></label><label>Nom<input name="last_name" value="${escapeHtml(selectedIdentity.last)}" required maxlength="80" autocomplete="family-name"></label><label>E-mail<input type="email" name="email" value="${escapeHtml(selectedEmployee?.email || '')}" required autocomplete="email"></label><label>Rôle<select name="role_id" required>${roleOptions}</select></label><label>Salarié lié (obligatoire pour le rôle Salarié)<select name="employee_id">${employeeOptions}</select></label><label>Établissement principal<select name="establishment_id" ${canManagePermissions ? '' : 'required'}>${establishmentOptions}</select></label>${scopeEditor}<label>Expiration<input type="date" name="expires_at" min="${new Date().toISOString().slice(0,10)}"></label>${permissionEditor}</div>${dialogButtons('Envoyer l’invitation')}</form>`);
     dialog.querySelector('#pp-invite-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);

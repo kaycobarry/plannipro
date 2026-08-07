@@ -14,7 +14,7 @@ assert.ok(!/S\.employees\s*=\s*\[\s*\{/.test(index), 'Automatic employee seed re
 assert.ok(!/if\s*\(\s*!S\.sites\.length\s*\)\s*S\.sites\s*=/.test(index), 'Automatic establishment seed remains');
 assert.ok(!/[a-z0-9._%+-]+@mail\.fr/i.test(sources), 'Bundled employee contact data remains');
 assert.match(index, /isLegacyBundledDemoState\(indexedSnapshot\.state\)/, 'Legacy demo IndexedDB snapshots must be ignored');
-assert.match(serviceWorker, /plannipro-shell-v31/, 'Service Worker cache version was not incremented');
+assert.match(serviceWorker, /plannipro-shell-v32/, 'Service Worker cache version was not incremented');
 assert.match(serviceWorker, /const isNavigation = event\.request\.mode === "navigate"/, 'HTML navigations must use the network-first path');
 assert.ok(serviceWorker.indexOf('fetch(event.request)') < serviceWorker.indexOf('caches.match(event.request)'), 'Navigation fetch must be attempted before its cache fallback');
 
