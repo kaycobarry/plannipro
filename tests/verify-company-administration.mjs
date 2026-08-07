@@ -72,6 +72,15 @@ includes(migration, 'delete from public.manager_scopes', 'stale scopes removed o
 includes(migration, 'delete from public.user_permissions', 'stale overrides removed on reactivation');
 includes(cloud, "form.getAll('permission_key')", 'supplementary permission selector');
 includes(cloud, "scope_type: 'service'", 'service scopes in invitation');
+includes(cloud, "<h3>Salariés de l’équipe</h3>", 'team employees are listed in user administration');
+includes(cloud, "data-pp-user-action=\"invite-employee\"", 'one-click employee invitation action');
+includes(cloud, "data-pp-user-action=\"sync-invite-employee\"", 'new employees can be synchronized before invitation');
+includes(cloud, "App.syncNow('prepare-employee-invitation')", 'employee synchronization precedes first invitation');
+includes(cloud, "Renvoyer l’invitation", 'one-click invitation resend action');
+includes(cloud, "first_name,last_name,employee_id,role_id,primary_establishment_id,status", 'invitation state is matched to employees');
+includes(cloud, "const selectedEmployee = selectedEmployeeId", 'employee invitation form prefill');
+includes(cloud, "roles.find((role) => role.key === 'employee')", 'employee role preselected');
+includes(cloud, "selectedEmployee?.email || ''", 'employee e-mail prefilled');
 
 // Direct writes remain closed; RLS and Realtime remain the enforcement layer.
 includes(schema, 'drop policy if exists organization_members_insert', 'no direct membership insertion policy');
@@ -82,7 +91,7 @@ includes(migration, 'alter publication supabase_realtime add table public.invita
 includes(cloud, "table: 'invitations'", 'invitation Realtime subscription');
 includes(migration, 'revoke all on function public.bootstrap_company()', 'bootstrap EXECUTE lockdown');
 includes(migration, 'grant execute on function public.bootstrap_company() to authenticated', 'authenticated bootstrap grant');
-includes(shell, 'plannipro-shell-v31', 'new application shell cache');
+includes(shell, 'plannipro-shell-v32', 'new application shell cache');
 
 new vm.Script(cloud, { filename: 'plannipro-cloud.js' });
 new vm.Script(shell, { filename: 'sw.js' });
