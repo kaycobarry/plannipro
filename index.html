@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://pkviymixsxwtwrarqomi.supabase.co wss://pkviymixsxwtwrarqomi.supabase.co; frame-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests">
 <title>PlanniPro — Gestion RH & Planning</title>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <link href="./plannipro-vault.css" rel="stylesheet">
@@ -6930,8 +6932,8 @@ renderAll = function() {
 
 </script>
 <script src="./supabase-config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./plannipro-cloud.js?v=topbar3"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.2" integrity="sha384-B2duOBIryCXbX4eDE4BdJwtNkQMRQde3o6IsjfPW28E6aH1CYE96hHeZRG3zY56O" crossorigin="anonymous"></script>
+<script src="./plannipro-cloud.js?v=hardening1"></script>
 <script src="./plannipro-vault.js?v=logout3"></script>
 <script src="./plannipro-publications.js?v=topbar3"></script>
 </body>

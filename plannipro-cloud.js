@@ -68,6 +68,8 @@
     cacheKey: null,
     remoteReady: false,
     lastError: null,
+    syncConflicts: EMPTY_ARRAY,
+    remoteRecordRevisions: new Map(),
     realtimeChannel: null,
     planningPublicationsAvailable: false,
     platformAdmin: false,
@@ -118,6 +120,8 @@
       generation: `${Date.now()}-${queueSequence}-${randomPart}`,
       reason,
       state,
+      baseRecordRevisionsCaptured: true,
+      baseRecordRevisions: Object.fromEntries(App.remoteRecordRevisions || []),
       queuedAt: new Date().toISOString()
     };
   }
@@ -282,7 +286,7 @@
     const copy = isCompany ? 'Création réservée au Super Administrateur PlanniPro. Le nouvel administrateur pourra ensuite inviter ses collaborateurs.' : isReset ? 'Nous vous enverrons un lien de récupération sécurisé.' : isInvite ? 'Votre invitation est valide. Choisissez maintenant votre mot de passe pour activer votre accès.' : isUpdate ? 'Choisissez un mot de passe robuste pour protéger votre espace.' : 'Connectez-vous pour charger uniquement les données auxquelles votre profil a accès.';
     const companyFields = isCompany ? '<label>Nom de l’entreprise<input name="organization_name" required maxlength="120" autocomplete="organization"></label><label>Nom du premier établissement<input name="establishment_name" required maxlength="120"></label><label>Prénom de l’administrateur<input name="first_name" required maxlength="80" autocomplete="given-name"></label><label>Nom de l’administrateur<input name="last_name" required maxlength="80" autocomplete="family-name"></label>' : '';
     node.hidden = false;
-    node.innerHTML = `<div class="pp-auth-card"><div class="pp-auth-brand">Planni<b>Pro</b></div><p class="pp-auth-kicker">${copy}</p>${message ? '<p class="pp-auth-note' + (error ? ' err' : '') + '">' + escapeHtml(message) + '</p>' : ''}<form class="pp-auth-form" id="pp-auth-form" data-mode="${mode}">${companyFields}${!isUpdate && !isInvite ? '<label>Adresse e-mail<input name="email" type="email" autocomplete="email" required></label>' : ''}${!isReset ? '<label>' + (isCompany ? 'Mot de passe initial de l’administrateur' : 'Mot de passe') + '<input name="password" type="password" autocomplete="' + (isCompany || isUpdate || isInvite ? 'new-password' : 'current-password') + '" minlength="8" required></label>' : ''}${isCompany || isInvite ? '<label>Confirmer le mot de passe<input name="password_confirmation" type="password" autocomplete="new-password" minlength="8" required></label>' : ''}<button class="pp-auth-submit" type="submit">${isCompany ? 'Créer l’entreprise' : isReset ? 'Envoyer le lien' : isInvite ? 'Activer mon accès' : isUpdate ? 'Mettre à jour le mot de passe' : 'Se connecter'}</button></form><div class="pp-auth-links">${mode === 'login' ? '<button class="pp-auth-link" data-pp-auth-mode="reset" type="button">Mot de passe oublié ?</button>' : ''}${!isInvite && mode !== 'login' ? '<button class="pp-auth-link" data-pp-auth-mode="login" type="button">Retour à la connexion</button>' : ''}</div></div>`;
+    node.innerHTML = `<div class="pp-auth-card"><div class="pp-auth-brand">Planni<b>Pro</b></div><p class="pp-auth-kicker">${copy}</p>${message ? '<p class="pp-auth-note' + (error ? ' err' : '') + '">' + escapeHtml(message) + '</p>' : ''}<form class="pp-auth-form" id="pp-auth-form" data-mode="${mode}">${companyFields}${!isUpdate && !isInvite ? '<label>Adresse e-mail<input name="email" type="email" autocomplete="email" required></label>' : ''}${!isReset ? '<label>' + (isCompany ? 'Mot de passe initial de l’administrateur' : 'Mot de passe') + '<input name="password" type="password" autocomplete="' + (isCompany || isUpdate || isInvite ? 'new-password' : 'current-password') + '" minlength="10" required></label>' : ''}${isCompany || isInvite ? '<label>Confirmer le mot de passe<input name="password_confirmation" type="password" autocomplete="new-password" minlength="10" required></label>' : ''}<button class="pp-auth-submit" type="submit">${isCompany ? 'Créer l’entreprise' : isReset ? 'Envoyer le lien' : isInvite ? 'Activer mon accès' : isUpdate ? 'Mettre à jour le mot de passe' : 'Se connecter'}</button></form><div class="pp-auth-links">${mode === 'login' ? '<button class="pp-auth-link" data-pp-auth-mode="reset" type="button">Mot de passe oublié ?</button>' : ''}${!isInvite && mode !== 'login' ? '<button class="pp-auth-link" data-pp-auth-mode="login" type="button">Retour à la connexion</button>' : ''}</div></div>`;
     node.querySelector('input')?.focus();
   }
 
@@ -429,6 +433,32 @@
     App.context = App.contexts.find((context) => context.organization_id === preference) || App.contexts[0];
     App.cacheKey = `state:${App.user.id}:${App.context.organization_id}`;
     return App.context;
+  }
+
+  async function dbRebaseQueueIfChanged(store, key, expectedGeneration, baseRecordRevisions) {
+    const db = await openCloudDatabase();
+    try {
+      return await new Promise((resolve, reject) => {
+        const transaction = db.transaction(store, 'readwrite');
+        const objectStore = transaction.objectStore(store);
+        const request = objectStore.get(key);
+        let rebased = false;
+        request.onsuccess = () => {
+          const stored = request.result;
+          const current = stored?.value || null;
+          if (current?.state && queueGeneration(current) !== expectedGeneration) {
+            current.baseRecordRevisionsCaptured = true;
+            current.baseRecordRevisions = { ...(baseRecordRevisions || {}) };
+            objectStore.put({ ...stored, value: current, updatedAt: new Date().toISOString() });
+            rebased = true;
+          }
+        };
+        request.onerror = () => reject(request.error || new Error('Lecture IndexedDB impossible'));
+        transaction.oncomplete = () => resolve(rebased);
+        transaction.onerror = () => reject(transaction.error || new Error('Rebasage IndexedDB impossible'));
+        transaction.onabort = () => reject(transaction.error || new Error('Rebasage IndexedDB annulé'));
+      });
+    } finally { db.close(); }
   }
 
   async function refreshPlatformAdministrator() {
@@ -614,6 +644,8 @@
     App.syncing = false;
     App.applyingRemote = false;
     App.remoteReady = false;
+    App.syncConflicts = [];
+    App.remoteRecordRevisions = new Map();
     document.querySelector('.pp-account')?.remove();
     authForm('login');
 
@@ -952,23 +984,28 @@
 
   async function fetchRemoteState() {
     const organizationId = App.context.organization_id;
+    const collectRows = async (createQuery, label, pageSize = 500) => {
+      const rows = [];
+      for (let from = 0; ; from += pageSize) {
+        const result = await createQuery().range(from, from + pageSize - 1);
+        tableError(result.error, label);
+        const page = result.data || [];
+        rows.push(...page);
+        if (page.length < pageSize) return rows;
+      }
+    };
     const [sitesResult, employeesResult, privateResult, selfServiceResult, recordsResult] = await Promise.all([
-      App.client.from('establishments').select('*').eq('organization_id', organizationId).order('name'),
-      App.client.from('employees').select('*').eq('organization_id', organizationId).order('created_at'),
-      App.client.from('employee_private_data').select('*').eq('organization_id', organizationId),
+      collectRows(() => App.client.from('establishments').select('*').eq('organization_id', organizationId).order('name'), 'Établissements'),
+      collectRows(() => App.client.from('employees').select('*').eq('organization_id', organizationId).order('created_at'), 'Salariés'),
+      collectRows(() => App.client.from('employee_private_data').select('*').eq('organization_id', organizationId).order('employee_id'), 'Données RH privées'),
       (App.can('employees', 'create_sensitive') || App.can('employees', 'update_sensitive'))
-        ? App.client.from('employee_self_service').select('*').eq('organization_id', organizationId)
-        : Promise.resolve({ data: [], error: null }),
-      App.client.from('business_records').select('*').eq('organization_id', organizationId).is('deleted_at', null).order('updated_at')
+        ? collectRows(() => App.client.from('employee_self_service').select('*').eq('organization_id', organizationId).order('employee_id'), 'Préférences de notification')
+        : Promise.resolve([]),
+      collectRows(() => App.client.from('business_records').select('*').eq('organization_id', organizationId).is('deleted_at', null).order('updated_at'), 'Données métier')
     ]);
-    tableError(sitesResult.error, 'Établissements');
-    tableError(employeesResult.error, 'Salariés');
-    tableError(privateResult.error, 'Données RH privées');
-    tableError(selfServiceResult.error, 'Préférences de notification');
-    tableError(recordsResult.error, 'Données métier');
     return {
-      sites: sitesResult.data || [], employees: employeesResult.data || [], privateData: privateResult.data || [], selfService: selfServiceResult.data || [],
-      records: recordsResult.data || []
+      sites: sitesResult, employees: employeesResult, privateData: privateResult, selfService: selfServiceResult,
+      records: recordsResult
     };
   }
 
@@ -981,6 +1018,11 @@
   }
 
   function applyRemoteState(remote) {
+    App.remoteRecordRevisions = new Map((remote.records || []).map((record) => [
+      `${record.record_type}:${record.legacy_id}`,
+      Number(record.revision) || 0
+    ]));
+    App.syncConflicts = [];
     const siteByDbId = new Map();
     const sites = remote.sites.map((site) => {
       const localId = site.legacy_id || `site-${site.id}`;
@@ -1061,12 +1103,47 @@
     return [];
   }
 
-  async function pruneRemote(snapshot) {
+  class SyncConflictError extends Error {
+    constructor(conflicts) {
+      super(`${conflicts.length} modification(s) distante(s) entrent en conflit avec les changements hors ligne.`);
+      this.name = 'SyncConflictError';
+      this.conflicts = conflicts;
+    }
+  }
+
+  function detectBusinessRecordConflicts(rows, remoteRecords, queueEntry) {
+    if (!queueEntry?.baseRecordRevisionsCaptured) return [];
+    const base = queueEntry.baseRecordRevisions || {};
+    const localByKey = new Map(rows.map((row) => [`${row.record_type}:${row.legacy_id}`, row]));
+    const conflicts = [];
+    (remoteRecords || []).forEach((remote) => {
+      const key = `${remote.record_type}:${remote.legacy_id}`;
+      const local = localByKey.get(key);
+      const hadBase = Object.prototype.hasOwnProperty.call(base, key);
+      const remoteChanged = !hadBase || Number(base[key]) !== Number(remote.revision || 0);
+      if (!remoteChanged) return;
+      // A row created remotely after the local snapshot is not a conflict when
+      // this device did not create a row with the same business key. It must be
+      // pulled and merged, not interpreted as a local deletion.
+      if (!hadBase && !local) return;
+      if (!local || !sameRecord(local, remote)) {
+        conflicts.push({ key, recordType: remote.record_type, legacyId: remote.legacy_id, remoteRevision: Number(remote.revision) || 0, baseRevision: hadBase ? Number(base[key]) : null });
+      }
+    });
+    return conflicts;
+  }
+
+  function revisionObject(records) {
+    return Object.fromEntries((records || []).map((record) => [
+      `${record.record_type}:${record.legacy_id}`,
+      Number(record.revision) || 0
+    ]));
+  }
+
+  async function pruneRemote(snapshot, remoteRecords) {
     const organizationId = App.context.organization_id;
-    const remoteRecords = await App.client.from('business_records').select('id,record_type,legacy_id,payload').eq('organization_id', organizationId).is('deleted_at', null);
-    tableError(remoteRecords.error, 'Vérification des suppressions');
     const localKeys = new Set(recordRows(snapshot, organizationId, new Map(), new Map()).map((row) => `${row.record_type}:${row.legacy_id}`));
-    const removable = (remoteRecords.data || []).filter((record) => {
+    const removable = (remoteRecords || []).filter((record) => {
       const module = RECORD_MODULES[record.record_type];
       const managedByTimeClock = record.record_type === 'punch'
         && (String(record.legacy_id || '').startsWith(TIME_CLOCK_LEGACY_PREFIX) || record.payload?.source === 'external-time-clock');
@@ -1093,7 +1170,7 @@
 
   }
 
-  async function pushSnapshot(snapshot) {
+  async function pushSnapshot(snapshot, queueEntry) {
     const organizationId = App.context.organization_id;
     const sites = Array.isArray(snapshot.sites) ? snapshot.sites : [];
     const siteRows = sites.map((site) => ({
@@ -1103,10 +1180,30 @@
       address: site.address || null,
       data: { ...site, id: undefined, name: undefined, address: undefined }
     }));
-    let storedSites = [];
-    const visibleSites = await App.client.from('establishments').select('id,legacy_id').eq('organization_id', organizationId);
+    // Run the conflict preflight before the first write. This guarantees that a
+    // rejected business snapshot cannot partially update sites or employees.
+    const [visibleSites, visibleEmployees, currentRecords] = await Promise.all([
+      App.client.from('establishments').select('id,legacy_id').eq('organization_id', organizationId),
+      App.client.from('employees').select('id,legacy_id').eq('organization_id', organizationId),
+      App.client.from('business_records')
+        .select('id,record_type,legacy_id,establishment_id,employee_id,team_id,service_id,payload,revision')
+        .eq('organization_id', organizationId).is('deleted_at', null)
+    ]);
     tableError(visibleSites.error, 'Établissements');
-    storedSites = visibleSites.data || [];
+    tableError(visibleEmployees.error, 'Salariés');
+    tableError(currentRecords.error, 'État courant des données métier');
+    let storedSites = visibleSites.data || [];
+    const preflightSiteMap = new Map(storedSites.map((site) => [String(site.legacy_id), site.id]));
+    if (storedSites.length === 1 && !storedSites[0].legacy_id && sites.length === 1) {
+      preflightSiteMap.set(String(sites[0].id), storedSites[0].id);
+    }
+    const preflightEmployeeMap = new Map((visibleEmployees.data || []).map((employee) => [String(employee.legacy_id), employee.id]));
+    const preflightConflicts = detectBusinessRecordConflicts(
+      recordRows(snapshot, organizationId, preflightSiteMap, preflightEmployeeMap),
+      currentRecords.data || [],
+      queueEntry
+    );
+    if (preflightConflicts.length) throw new SyncConflictError(preflightConflicts);
     if (siteRows.length && (App.can('establishments', 'create') || App.can('establishments', 'update'))) {
       // The establishment created at workspace bootstrap has no legacy id yet.
       // Match it to the first local site instead of creating a duplicate.
@@ -1177,10 +1274,6 @@
         tableError(result.error, 'Préférences de notification du planning');
       }
     }
-    const currentRecords = await App.client.from('business_records')
-      .select('id,record_type,legacy_id,establishment_id,employee_id,team_id,service_id,payload')
-      .eq('organization_id', organizationId).is('deleted_at', null);
-    tableError(currentRecords.error, 'État courant des données métier');
     const currentByKey = new Map((currentRecords.data || []).map((record) => [`${record.record_type}:${record.legacy_id}`, record]));
     const rows = recordRows(snapshot, organizationId, siteMap, employeeMap)
       .map((row) => authorizedRecordRow(row, currentByKey.get(`${row.record_type}:${row.legacy_id}`)))
@@ -1189,7 +1282,12 @@
       const result = await App.client.from('business_records').upsert(rows, { onConflict: 'organization_id,record_type,legacy_id' });
       tableError(result.error, 'Données métier');
     }
-    await pruneRemote(snapshot);
+    await pruneRemote(snapshot, currentRecords.data || []);
+    const revisions = await App.client.from('business_records')
+      .select('record_type,legacy_id,revision')
+      .eq('organization_id', organizationId).is('deleted_at', null);
+    tableError(revisions.error, 'Révisions des données métier');
+    return revisionObject(revisions.data || []);
   }
 
   async function restoreOrPull() {
@@ -1273,8 +1371,13 @@
         const pending = await dbGet('queue', pendingKey);
         if (!pending?.state) break;
         App.status('Synchronisation en cours…', 'pending');
-        await pushSnapshot(pending.state);
+        const pushedRevisions = (await pushSnapshot(pending.state, pending)) || Object.fromEntries(App.remoteRecordRevisions || []);
+        const pushedGeneration = queueGeneration(pending);
         const removed = await dbDeleteIfUnchanged('queue', pendingKey, queueGeneration(pending));
+        if (!removed && typeof dbRebaseQueueIfChanged === 'function') {
+          await dbRebaseQueueIfChanged('queue', pendingKey, pushedGeneration, pushedRevisions);
+        }
+        App.remoteRecordRevisions = new Map(Object.entries(pushedRevisions));
         passes += 1;
         if (removed) break;
       }
@@ -1299,7 +1402,14 @@
     } catch (error) {
       App.lastError = error;
       console.error('Synchronisation PlanniPro', error);
-      App.status('Synchronisation en attente', 'error');
+      if (error?.name === 'SyncConflictError') {
+        App.syncConflicts = error.conflicts;
+        App.status('Conflit de synchronisation', 'error');
+        await dbPut('backups', `conflict:${App.user.id}:${App.context.organization_id}:${Date.now()}`, {
+          state: snapshotState(), conflicts: error.conflicts, savedAt: new Date().toISOString()
+        }).catch(() => {});
+        safeToast('Une modification plus récente existe sur un autre appareil. Vos changements restent sauvegardés localement et ne seront pas écrasés.', 'err');
+      } else App.status('Synchronisation en attente', 'error');
       if (/accès|access|not authorized|permission|membership|rights/i.test(String(error?.message || ''))) {
         safeToast('Vos droits ont changé : la synchronisation a été bloquée.', 'err');
         await logout();

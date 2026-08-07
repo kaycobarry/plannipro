@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.2";
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { buildEmployeePlanningPdf, buildGlobalPlanningPdf, type PlanningSnapshot } from "../_shared/planning-pdf.ts";
 

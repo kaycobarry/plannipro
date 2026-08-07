@@ -11,6 +11,8 @@ const kioskHtml = read('pointeuse.html');
 const cloud = read('plannipro-cloud.js');
 const shell = read('sw.js');
 const index = read('index.html');
+const config = read('supabase/config.toml');
+const pinInvitationFunction = read('supabase/functions/send-clock-pin-invitation/index.ts');
 
 const includes = (source, expected, label = expected) => assert.ok(source.includes(expected), `Missing: ${label}`);
 
@@ -67,11 +69,18 @@ includes(kiosk, 'list_time_clock_device_history', 'device history UI');
 includes(kiosk, 'generate_employee_time_clock_pin', 'server PIN generation UI');
 includes(kiosk, 'create_employee_time_clock_pin_invitation', 'one-time link UI');
 includes(kiosk, "send-clock-pin-invitation", 'e-mail invitation Edge Function UI');
+includes(config, '[functions.send-clock-pin-invitation]', 'PIN invitation Edge Function config');
+includes(config, '[functions.send-clock-pin-invitation]\n# The browser uses a modern sb_publishable_ key.', 'PIN invitation documents custom authentication');
+includes(config, 'create_employee_time_clock_pin_invitation.\nverify_jwt = false', 'PIN invitation gateway JWT disabled');
+includes(pinInvitationFunction, 'request.headers.get("Authorization")', 'PIN invitation requires bearer authorization');
+includes(pinInvitationFunction, 'userClient.auth.getUser()', 'PIN invitation validates the caller session');
+assert.match(config, /\[functions\.send-clock-pin-invitation\][\s\S]*?verify_jwt\s*=\s*false/, 'PIN invitation must use handler-level JWT validation');
+includes(pinInvitationFunction, 'PLANNING_EMAIL_FROM', 'shared verified e-mail sender');
 includes(index, "showSP('clocks',this)", 'Settings → Time clocks tab');
 includes(index, 'openTimeClockManagement');
 includes(cloud, "module: 'clock_devices', action: 'view'", 'management UI permission guard');
 includes(kioskHtml, './pointeuse.webmanifest');
-includes(shell, 'plannipro-shell-v32');
+includes(shell, 'plannipro-shell-v33');
 includes(shell, 'requestUrl.hostname.endsWith("supabase.co")');
 
 assert.ok(!/SUPABASE_SERVICE_ROLE_KEY|service_role\s*[:=]/i.test(kiosk), 'No service role secret in browser');

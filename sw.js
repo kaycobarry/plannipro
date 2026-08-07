@@ -1,4 +1,4 @@
-const CACHE = "plannipro-shell-v32";
+const CACHE = "plannipro-shell-v33";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -7,12 +7,12 @@ const APP_SHELL = [
   "./pointeuse.webmanifest",
   "./pointeuse-icon.svg",
   "./supabase-config.js",
-  "./plannipro-cloud.js?v=company-lock1",
+  "./plannipro-cloud.js?v=hardening1",
   "./plannipro-vault.js?v=logout3",
   "./plannipro-vault.css",
   "./plannipro-publications.js?v=topbar3",
   "./plannipro-publications.css",
-  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.2"
 ];
 
 self.addEventListener("install", (event) => {
