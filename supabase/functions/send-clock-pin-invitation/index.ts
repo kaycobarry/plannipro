@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.2";
 import { corsHeaders, json } from "../_shared/cors.ts";
 
 type RequestBody = { organization_id?: string; employee_id?: string };
@@ -39,7 +39,7 @@ Deno.serve(async (request) => {
   link.searchParams.set("clock-pin", data.token);
   const email = typeof data.employee_email === "string" ? data.employee_email.trim() : "";
   const resendKey = Deno.env.get("RESEND_API_KEY");
-  const resendFrom = Deno.env.get("RESEND_FROM");
+  const resendFrom = Deno.env.get("PLANNING_EMAIL_FROM") ?? Deno.env.get("RESEND_FROM");
 
   if (!email || !resendKey || !resendFrom) {
     return json({

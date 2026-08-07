@@ -1,0 +1,17 @@
+{
+  "name": "plannipro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Planning, RH et pointeuse synchronisés avec Supabase",
+  "scripts": {
+    "test": "node tests/run-all.mjs",
+    "test:syntax": "node --check plannipro-cloud.js && node --check plannipro-publications.js && node --check plannipro-vault.js && node --check pointeuse.js && node --check sw.js",
+    "test:static": "node --check plannipro-cloud.js && node --check plannipro-publications.js && node --check plannipro-vault.js && node --check pointeuse.js && node --check sw.js && node tests/run-all.mjs",
+    "test:remote:anon": "node tests/remote-anon.mjs && node tests/remote-edge-security.mjs",
+    "test:remote:public": "node tests/remote-public-smoke.mjs",
+    "test:remote:rbac": "node tests/remote-rbac.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

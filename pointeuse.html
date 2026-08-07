@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' https://pkviymixsxwtwrarqomi.supabase.co wss://pkviymixsxwtwrarqomi.supabase.co; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests">
   <meta name="theme-color" content="#111a3b">
   <meta name="description" content="Pointeuse tablette sécurisée PlanniPro.">
   <link rel="manifest" href="./pointeuse.webmanifest">
@@ -19,7 +21,7 @@
   <main id="time-clock-root" class="tc-loader" aria-live="polite">Préparation de la pointeuse…</main>
   <noscript>La pointeuse PlanniPro nécessite JavaScript.</noscript>
   <script src="./supabase-config.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.2" integrity="sha384-B2duOBIryCXbX4eDE4BdJwtNkQMRQde3o6IsjfPW28E6aH1CYE96hHeZRG3zY56O" crossorigin="anonymous"></script>
   <script src="./pointeuse.js"></script>
 </body>
 </html>

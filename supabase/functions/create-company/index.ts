@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.2";
 import { corsHeaders, json } from "../_shared/cors.ts";
 
 type CreateCompanyRequest = {
@@ -23,6 +23,11 @@ Deno.serve(async (request) => {
     return json({ error: "Missing required Edge Function secrets" }, 500, request);
   }
 
+  const authorization = request.headers.get("Authorization") ?? "";
+  if (!authorization.startsWith("Bearer ")) {
+    return json({ error: "Authentication required" }, 401, request);
+  }
+
   let payload: CreateCompanyRequest;
   try {
     payload = await request.json();
@@ -42,13 +47,8 @@ Deno.serve(async (request) => {
       || firstName.length < 1 || firstName.length > 80
       || lastName.length < 1 || lastName.length > 80
       || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-      || password.length < 8 || password.length > 128) {
+      || password.length < 10 || password.length > 128) {
     return json({ error: "Invalid company or administrator information" }, 400, request);
-  }
-
-  const authorization = request.headers.get("Authorization") ?? "";
-  if (!authorization.startsWith("Bearer ")) {
-    return json({ error: "Authentication required" }, 401, request);
   }
 
   // The platform validates the JWT before the handler runs. The scoped client

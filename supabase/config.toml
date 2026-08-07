@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.publish-planning]
 verify_jwt = true
+
+[functions.send-clock-pin-invitation]
+# The browser uses a modern sb_publishable_ key. Let the request reach the
+# handler, which validates the user JWT with auth.getUser() and enforces RBAC
+# through create_employee_time_clock_pin_invitation.
+verify_jwt = false
