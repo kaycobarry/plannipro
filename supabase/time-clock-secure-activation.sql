@@ -618,9 +618,16 @@ begin
      or not public.can_access_employee(p_organization_id, v_employee.establishment_id, v_employee.id, v_employee.team_id, v_employee.service_id, 'update') then
     raise exception 'Not authorized to invite this employee';
   end if;
-  select personal_email into v_email
-  from public.employee_self_service
-  where employee_id = p_employee_id and organization_id = p_organization_id;
+  -- L'adresse configurée par l'équipe pour les notifications de planning est
+  -- prioritaire. Le repli sur l'e-mail personnel conserve la compatibilité
+  -- avec les fiches renseignées par le salarié lui-même. to_jsonb permet à ce
+  -- script de rester rejouable avant ou après la migration Publications.
+  select coalesce(
+    nullif(trim(to_jsonb(s) ->> 'planning_notification_email'), ''),
+    nullif(trim(s.personal_email), '')
+  ) into v_email
+  from public.employee_self_service s
+  where s.employee_id = p_employee_id and s.organization_id = p_organization_id;
   update public.employee_time_clock_pin_invitations set used_at = now()
   where organization_id = p_organization_id and employee_id = p_employee_id and used_at is null;
   v_token := replace(replace(replace(encode(extensions.gen_random_bytes(32), 'base64'), '+', '-'), '/', '_'), '=', '');

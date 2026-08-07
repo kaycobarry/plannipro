@@ -71,6 +71,8 @@ includes(kiosk, "p_status: 'revoked'", 'explicit revoke UI');
 includes(kiosk, 'list_time_clock_device_history', 'device history UI');
 includes(kiosk, 'generate_employee_time_clock_pin', 'server PIN generation UI');
 includes(kiosk, 'create_employee_time_clock_pin_invitation', 'one-time link UI');
+includes(secureSql, "to_jsonb(s) ->> 'planning_notification_email'", 'planning notification address used for PIN e-mail');
+includes(secureSql, 'nullif(trim(s.personal_email)', 'personal e-mail remains the fallback');
 includes(kiosk, "send-clock-pin-invitation", 'e-mail invitation Edge Function UI');
 includes(config, '[functions.send-clock-pin-invitation]', 'PIN invitation Edge Function config');
 includes(config, '[functions.send-clock-pin-invitation]\n# The browser uses a modern sb_publishable_ key.', 'PIN invitation documents custom authentication');
