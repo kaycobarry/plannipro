@@ -44,6 +44,21 @@
   };
   const TIME_CLOCK_LEGACY_PREFIX = 'time-clock:';
   const DEPRECATED_PERMISSIONS = new Set(['pointage.manage_settings', 'users.manage_users']);
+  const STANDARD_BUSINESS_ROLE_KEYS = new Set(['administrator', 'manager', 'supervisor', 'employee']);
+  const ADVANCED_EXCEPTION_PERMISSIONS = Object.freeze([
+    { key: 'planning.publish', label: 'Publier les plannings' },
+    { key: 'pointage.correct', label: 'Corriger les pointages' },
+    { key: 'leaves.validate', label: 'Valider les conges' },
+    { key: 'leaves.refuse', label: 'Refuser les conges' },
+    { key: 'employees.view_sensitive', label: 'Voir les donnees RH confidentielles' },
+    { key: 'financial.view', label: 'Voir les donnees financieres' }
+  ]);
+  const BUSINESS_ROLE_DESCRIPTIONS = Object.freeze({
+    administrator: 'Acces complet et administration des utilisateurs de cet etablissement.',
+    manager: 'Gestion operationnelle, RH utile, planning, temps et conges sans parametres de securite.',
+    supervisor: 'Organisation de l equipe et du planning sans donnees RH sensibles ni administration.',
+    employee: 'Espace personnel : planning, pointages, heures, conges et documents autorises.'
+  });
   // Only scheduling metadata is replicated in the broadly readable employee
   // row.  Every other legacy field is treated as RH-private by default.  A
   // whitelist is safer than trying to maintain an ever-growing blacklist of
@@ -79,6 +94,15 @@
       const key = `${module}.${action}`;
       const permission = App.context.permissions.find((item) => item && item.key === key);
       return Boolean(permission && permission.allowed);
+    },
+    canAt(establishmentId, module, action = 'view') {
+      if (!establishmentId) return App.can(module, action);
+      const access = Array.isArray(App.context?.establishment_access)
+        ? App.context.establishment_access.find((item) => String(item?.establishment_id) === String(establishmentId))
+        : null;
+      if (!access || !Array.isArray(access.permissions)) return false;
+      const permission = access.permissions.find((item) => item?.key === `${module}.${action}`);
+      return Boolean(permission?.allowed);
     },
     require(module, action = 'view', message) {
       if (App.can(module, action)) return true;
@@ -906,7 +930,7 @@
       && sameValue(row.payload || {}, remote.payload || {});
   }
 
-  function mergeAuthorizedLocks(remoteLocks, localLocks) {
+  function mergeAuthorizedLocks(remoteLocks, localLocks, establishmentId) {
     const result = clone(remoteLocks && typeof remoteLocks === 'object' ? remoteLocks : { week: {}, day: {} });
     ['week', 'day'].forEach((scope) => {
       const remote = remoteLocks?.[scope] && typeof remoteLocks[scope] === 'object' ? remoteLocks[scope] : {};
@@ -915,37 +939,39 @@
       new Set([...Object.keys(remote), ...Object.keys(local)]).forEach((key) => {
         const hadRemote = Object.prototype.hasOwnProperty.call(remote, key);
         const hasLocal = Object.prototype.hasOwnProperty.call(local, key);
-        if (!hadRemote && hasLocal && App.can('planning', 'lock')) result[scope][key] = local[key];
-        else if (hadRemote && !hasLocal && App.can('planning', 'unlock')) delete result[scope][key];
+        if (!hadRemote && hasLocal && App.canAt(establishmentId, 'planning', 'lock')) result[scope][key] = local[key];
+        else if (hadRemote && !hasLocal && App.canAt(establishmentId, 'planning', 'unlock')) delete result[scope][key];
         else if (hadRemote && hasLocal && !sameValue(remote[key], local[key])
-          && App.can('planning', 'lock') && App.can('planning', 'unlock')) result[scope][key] = local[key];
+          && App.canAt(establishmentId, 'planning', 'lock') && App.canAt(establishmentId, 'planning', 'unlock')) result[scope][key] = local[key];
       });
     });
     return result;
   }
 
   function authorizedRecordRow(row, remote) {
+    const can = (module, action) => App.canAt(row.establishment_id, module, action);
+    const canRemote = (module, action) => App.canAt(remote?.establishment_id, module, action);
     if (!remote) {
-      if (row.record_type === 'shift') return App.can('planning', row.payload?.copiedFrom ? 'copy' : 'create') ? row : null;
-      if (row.record_type === 'absence') return App.can('leaves', 'request') ? row : null;
-      if (row.record_type === 'punch') return App.can('pointage', 'badge') ? row : null;
-      if (row.record_type === 'register') return App.can('register', 'manage') ? row : null;
+      if (row.record_type === 'shift') return can('planning', row.payload?.copiedFrom ? 'copy' : 'create') ? row : null;
+      if (row.record_type === 'absence') return can('leaves', 'request') ? row : null;
+      if (row.record_type === 'punch') return can('pointage', 'badge') ? row : null;
+      if (row.record_type === 'register') return can('register', 'manage') ? row : null;
       const module = RECORD_MODULES[row.record_type];
-      return module && App.can(module, 'create') ? row : null;
+      return module && can(module, 'create') ? row : null;
     }
     if (row.record_type === 'setting' && row.legacy_id === 'application-state') {
       const next = { ...row, payload: clone(remote.payload || {}) };
       const localPayload = row.payload || {};
-      if (App.can('settings', 'update')) {
+      if (can('settings', 'update')) {
         Object.keys(localPayload).filter((key) => !['locks', 'templates'].includes(key)).forEach((key) => { next.payload[key] = clone(localPayload[key]); });
       }
-      if (App.can('planning', 'update')) next.payload.templates = clone(localPayload.templates || []);
-      next.payload.locks = mergeAuthorizedLocks(remote.payload?.locks, localPayload.locks);
+      if (can('planning', 'update')) next.payload.templates = clone(localPayload.templates || []);
+      next.payload.locks = mergeAuthorizedLocks(remote.payload?.locks, localPayload.locks, row.establishment_id);
       // La semaine affichée n'est pas une donnée sensible ; elle accompagne
       // uniquement une autre mutation autorisée du même enregistrement.
       if (localPayload.weekStart != null && (
-        App.can('settings', 'update') || App.can('planning', 'update')
-        || App.can('planning', 'lock') || App.can('planning', 'unlock')
+        can('settings', 'update') || can('planning', 'update')
+        || can('planning', 'lock') || can('planning', 'unlock')
       )) next.payload.weekStart = localPayload.weekStart;
       return sameRecord(next, remote) ? null : next;
     }
@@ -959,20 +985,21 @@
       const localContent = { ...(row.payload || {}) }; delete localContent.date;
       const remoteContent = { ...(remote.payload || {}) }; delete remoteContent.date;
       const edited = !sameValue(localContent, remoteContent);
-      return (!moved || App.can('planning', 'move')) && (!edited || App.can('planning', 'update')) ? row : null;
+      return (!moved || (can('planning', 'move') && canRemote('planning', 'move')))
+        && (!edited || (can('planning', 'update') && canRemote('planning', 'update'))) ? row : null;
     }
-    if (row.record_type === 'absence') return App.can('leaves', 'update') ? row : null;
-    if (row.record_type === 'punch') return App.can('pointage', 'correct') ? row : null;
-    if (row.record_type === 'register') return App.can('register', 'manage') ? row : null;
+    if (row.record_type === 'absence') return can('leaves', 'update') ? row : null;
+    if (row.record_type === 'punch') return can('pointage', 'correct') ? row : null;
+    if (row.record_type === 'register') return can('register', 'manage') ? row : null;
     const module = RECORD_MODULES[row.record_type];
-    return module && App.can(module, 'update') ? row : null;
+    return module && can(module, 'update') ? row : null;
   }
 
   function canDeleteRecord(record) {
-    if (record.record_type === 'absence') return App.can('leaves', 'cancel');
-    if (record.record_type === 'register') return App.can('register', 'manage');
+    if (record.record_type === 'absence') return App.canAt(record.establishment_id, 'leaves', 'cancel');
+    if (record.record_type === 'register') return App.canAt(record.establishment_id, 'register', 'manage');
     const module = RECORD_MODULES[record.record_type];
-    return Boolean(module && App.can(module, 'delete'));
+    return Boolean(module && App.canAt(record.establishment_id, module, 'delete'));
   }
 
   function tableError(error, table) {
@@ -1453,6 +1480,8 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'roles', filter: `organization_id=eq.${organizationId}` }, refreshPermissions)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'role_permissions' }, refreshPermissions)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_permissions', filter: `organization_id=eq.${organizationId}` }, refreshPermissions)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'member_establishment_roles', filter: `organization_id=eq.${organizationId}` }, refreshAccess)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'member_establishment_permissions', filter: `organization_id=eq.${organizationId}` }, refreshAccess)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'invitations', filter: `organization_id=eq.${organizationId}` }, refreshUsers)
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') App.status('Synchronisé en direct', 'ok');
@@ -1652,34 +1681,42 @@
     if (!root || !App.context) return;
     try {
       const organizationId = App.context.organization_id;
-      const [membersResult, invitationsResult, rolesResult, establishmentsResult, permissionsResult] = await Promise.all([
+      const [membersResult, invitationsResult, rolesResult, establishmentsResult, permissionsResult, assignmentsResult] = await Promise.all([
         App.client.from('organization_members').select('id,user_id,role_id,status,primary_establishment_id,employee_id,invited_at,activated_at,last_seen_at,profiles(full_name,email),roles(id,key,label,rank,is_read_only,is_active),establishments(name)').eq('organization_id', organizationId).order('created_at'),
         App.client.from('invitations').select('id,email,first_name,last_name,employee_id,role_id,primary_establishment_id,status,expires_at,created_at,roles(label),establishments(name)').eq('organization_id', organizationId).order('created_at', { ascending: false }),
         App.client.from('roles').select('*').eq('organization_id', organizationId).order('rank', { ascending: false }),
         App.client.from('establishments').select('id,name').eq('organization_id', organizationId).order('name'),
-        App.client.from('permissions').select('key,module,action,label').order('module').order('action')
+        App.client.from('permissions').select('key,module,action,label').order('module').order('action'),
+        App.client.from('member_establishment_roles').select('id,member_id,establishment_id,role_id,is_primary,roles(id,key,label,rank,is_active),establishments(id,name)').eq('organization_id', organizationId)
       ]);
       tableError(membersResult.error, 'Utilisateurs');
       tableError(invitationsResult.error, 'Invitations');
       tableError(rolesResult.error, 'Rôles');
       tableError(establishmentsResult.error, 'Établissements');
       tableError(permissionsResult.error, 'Permissions');
+      tableError(assignmentsResult.error, 'Affectations par etablissement');
       const members = membersResult.data || [];
       const invitations = invitationsResult.data || [];
       const roles = rolesResult.data || [];
       const establishments = establishmentsResult.data || [];
+      const assignments = assignmentsResult.data || [];
       const membersRows = members.map((member) => {
         const profile = member.profiles || {};
-        const role = member.roles || {};
-        const establishment = member.establishments || {};
+        const memberAssignments = assignments.filter((assignment) => assignment.member_id === member.id);
+        const primaryAssignment = memberAssignments.find((assignment) => assignment.establishment_id === member.primary_establishment_id)
+          || memberAssignments.find((assignment) => assignment.is_primary) || memberAssignments[0];
+        const role = primaryAssignment?.roles || member.roles || {};
+        const establishment = primaryAssignment?.establishments || member.establishments || {};
         const lastSeen = member.last_seen_at ? new Date(member.last_seen_at).toLocaleString('fr-FR') : '—';
         const other = member.user_id !== App.user.id;
         const actions = [];
         if (other && App.can('users','manage_roles')) actions.push('<button class="btn btn-outline btn-sm" data-pp-user-action="role" data-member-id="' + escapeHtml(member.id) + '">Rôle</button>');
-        if (other && App.can('users','manage_permissions')) actions.push('<button class="btn btn-outline btn-sm" data-pp-user-action="permissions" data-member-id="' + escapeHtml(member.id) + '">Droits</button> <button class="btn btn-outline btn-sm" data-pp-user-action="scope" data-member-id="' + escapeHtml(member.id) + '">Périmètre</button>');
+        if (other && App.can('users','manage_permissions')) actions.push('<button class="btn btn-outline btn-sm" data-pp-user-action="permissions" data-member-id="' + escapeHtml(member.id) + '">Autorisations avancées</button>');
         if (other && member.status === 'active' && App.can('users','disable')) actions.push('<button class="btn btn-danger btn-sm" data-pp-user-action="status" data-member-id="' + escapeHtml(member.id) + '" data-status="suspended">Suspendre</button>');
         if (other && member.status !== 'active' && App.can('users','reactivate')) actions.push('<button class="btn btn-primary btn-sm" data-pp-user-action="status" data-member-id="' + escapeHtml(member.id) + '" data-status="active">Réactiver</button>');
-        return `<tr><td><strong>${escapeHtml(profile.full_name || profile.email || 'Utilisateur')}</strong><br><span style="color:#74809a">${escapeHtml(profile.email || '')}</span></td><td>${escapeHtml(role.label || '—')}${role.is_active === false ? ' · désactivé' : ''}</td><td>${escapeHtml(establishment.name || 'Tous périmètres')}</td><td><span class="pp-users-status ${escapeHtml(member.status)}">${escapeHtml(member.status)}</span></td><td>${escapeHtml(lastSeen)}</td><td>${actions.join(' ') || '—'}</td></tr>`;
+        const roleLabel = role.key === 'owner' ? 'Administrateur' : (role.label || '—');
+        const additionalSites = Math.max(0, memberAssignments.length - 1);
+        return `<tr><td><strong>${escapeHtml(profile.full_name || profile.email || 'Utilisateur')}</strong><br><span style="color:#74809a">${escapeHtml(profile.email || '')}</span></td><td><span class="pp-users-status">${escapeHtml(roleLabel.toUpperCase())}</span>${role.is_active === false ? ' · désactivé' : ''}</td><td>${escapeHtml(establishment.name || '—')}${additionalSites ? ` +${additionalSites}` : ''}</td><td><span class="pp-users-status ${escapeHtml(member.status)}">${escapeHtml(member.status)}</span></td><td>${escapeHtml(lastSeen)}</td><td>${actions.join(' ') || '—'}</td></tr>`;
       }).join('') || '<tr><td colspan="6">Aucun utilisateur.</td></tr>';
       const invitationRows = invitations.map((invitation) => {
         const canManageInvitation = App.can('users', 'invite') && invitation.status === 'sent';
@@ -1719,13 +1756,14 @@
         }
         return `<tr><td><strong>${escapeHtml(employee.name || 'Salarié')}</strong><br><span style="color:#74809a">${escapeHtml(employee.role || 'Salarié')}</span></td><td>${escapeHtml(employee.email || 'E-mail à renseigner')}</td><td>${escapeHtml(scope)}</td><td>${status}</td><td>${actions}</td></tr>`;
       }).join('') || '<tr><td colspan="5">Aucun salarié actif dans Équipe.</td></tr>';
-      const roleButton = App.can('users','manage_roles') ? '<button class="btn btn-outline" type="button" data-pp-user-action="roles">Rôles et permissions</button> ' : '';
+      const roleButton = App.can('users','manage_permissions') ? '<button class="btn btn-outline" type="button" data-pp-user-action="roles">Autorisations avancées</button> ' : '';
       const inviteButton = App.can('users','invite') ? '<button class="btn btn-primary" type="button" data-pp-user-action="invite">Inviter un utilisateur</button>' : '';
       root.innerHTML = `<div class="pp-users-head"><div><h2>Utilisateurs et droits d’accès</h2><p>${escapeHtml(App.context.organization_name)} · les restrictions sont aussi appliquées par Supabase RLS.</p></div>${roleButton || inviteButton ? '<div>' + roleButton + inviteButton + '</div>' : ''}</div><div class="pp-users-card"><h3>Salariés de l’équipe</h3><div style="overflow:auto"><table class="pp-users-table"><thead><tr><th>Salarié</th><th>E-mail</th><th>Établissement / équipe</th><th>Accès</th><th>Action</th></tr></thead><tbody>${teamRows}</tbody></table></div></div><div class="pp-users-card"><h3>Utilisateurs actifs et accès</h3><div style="overflow:auto"><table class="pp-users-table"><thead><tr><th>Utilisateur</th><th>Rôle</th><th>Établissement</th><th>Statut</th><th>Dernière connexion</th><th>Actions</th></tr></thead><tbody>${membersRows}</tbody></table></div></div><div class="pp-users-card"><h3>Invitations</h3><div style="overflow:auto"><table class="pp-users-table"><thead><tr><th>E-mail</th><th>Rôle</th><th>Établissement</th><th>Statut</th><th>Expiration</th><th>Actions</th></tr></thead><tbody>${invitationRows}</tbody></table></div></div>`;
       root.dataset.roles = JSON.stringify(roles);
       root.dataset.establishments = JSON.stringify(establishmentsResult.data || []);
       root.dataset.members = JSON.stringify(members);
       root.dataset.permissions = JSON.stringify(permissionsResult.data || []);
+      root.dataset.assignments = JSON.stringify(assignments);
     } catch (error) {
       root.innerHTML = '<div class="pp-users-card"><h3>Impossible de charger les droits</h3><p style="padding:0 16px 16px">' + escapeHtml(error.message || 'Erreur inconnue') + '</p></div>';
     }
@@ -1775,9 +1813,10 @@
         roles: JSON.parse(root?.dataset.roles || '[]'),
         establishments: JSON.parse(root?.dataset.establishments || '[]'),
         members: JSON.parse(root?.dataset.members || '[]'),
-        permissions: JSON.parse(root?.dataset.permissions || '[]')
+        permissions: JSON.parse(root?.dataset.permissions || '[]'),
+        assignments: JSON.parse(root?.dataset.assignments || '[]')
       };
-    } catch (_) { return { roles: [], establishments: [], members: [], permissions: [] }; }
+    } catch (_) { return { roles: [], establishments: [], members: [], permissions: [], assignments: [] }; }
   }
 
   document.addEventListener('click', (event) => {
@@ -1788,9 +1827,9 @@
     if (action === 'invite-employee') openInviteDialog(button.dataset.employeeId);
     if (action === 'sync-invite-employee') void syncAndInviteEmployee(button.dataset.employeeId, button);
     if (action === 'role') void openRoleAssignmentDialog(button.dataset.memberId);
-    if (action === 'permissions') void openPermissionsDialog(button.dataset.memberId);
+    if (action === 'permissions') void openAdvancedPermissionsDialog(button.dataset.memberId);
     if (action === 'scope') void openScopeDialog(button.dataset.memberId);
-    if (action === 'roles') void openRolesDialog();
+    if (action === 'roles') void openAdvancedPermissionsDialog();
     if (action === 'status') void changeMemberStatus(button.dataset.memberId, button.dataset.status);
     if (action === 'resend-invitation') void resendInvitation(button.dataset.invitationId);
     if (action === 'cancel-invitation') void cancelInvitation(button.dataset.invitationId);
@@ -1821,39 +1860,40 @@
     }
   }
 
+  function updateBusinessRoleDescription(select, node) {
+    const role = getUsersData().roles.find((item) => item.id === select?.value);
+    if (node) node.textContent = BUSINESS_ROLE_DESCRIPTIONS[role?.key] || '';
+  }
+
   function openInviteDialog(selectedEmployeeId) {
     if (!App.require('users', 'invite')) return;
-    const { roles, establishments, permissions } = getUsersData();
+    const { roles, establishments } = getUsersData();
     const selectedEmployee = selectedEmployeeId == null ? null : (S.employees || []).find((employee) => String(employee.id) === String(selectedEmployeeId));
     const selectedIdentity = selectedEmployee ? splitName(selectedEmployee) : { first: '', last: '' };
     const selectedSite = selectedEmployee ? (S.sites || []).find((site) => String(site.id) === String(selectedEmployee.site || '')) : null;
     const selectedEstablishmentId = String(selectedEmployee?.cloudEstablishmentId || selectedSite?.cloudEstablishmentId || '');
     const selectedRoleId = selectedEmployee ? String(roles.find((role) => role.key === 'employee')?.id || '') : '';
-    const canManagePermissions = App.can('users', 'manage_permissions');
-    const roleOptions = roles.filter((role) => role.key !== 'owner' && role.is_active !== false)
-      .filter((role) => App.context?.role_key === 'owner' || Number(role.rank) < Number(App.context?.role_rank || 0))
+    const roleOptions = roles.filter((role) => STANDARD_BUSINESS_ROLE_KEYS.has(role.key) && role.is_active !== false)
+      .filter((role) => Number(role.rank) <= Number(App.context?.role_rank || 0))
       .map((role) => `<option value="${escapeHtml(role.id)}" ${selectedRoleId === String(role.id) ? 'selected' : ''}>${escapeHtml(role.label)}</option>`).join('');
-    const establishmentOptions = '<option value="">Tous les établissements autorisés</option>' + establishments.map((establishment) => `<option value="${escapeHtml(establishment.id)}" ${selectedEstablishmentId === String(establishment.id) ? 'selected' : ''}>${escapeHtml(establishment.name)}</option>`).join('');
+    const establishmentOptions = '<option value="">Choisir un établissement</option>' + establishments.map((establishment) => `<option value="${escapeHtml(establishment.id)}" ${selectedEstablishmentId === String(establishment.id) ? 'selected' : ''}>${escapeHtml(establishment.name)}</option>`).join('');
     const employeeOptions = '<option value="">Choisir un salarié lié</option>' + S.employees.filter((employee) => !employee.archived).map((employee) => `<option value="${escapeHtml(employee.cloudEmployeeId || '')}" ${employee.cloudEmployeeId ? '' : 'disabled'} ${selectedEmployee && String(selectedEmployee.id) === String(employee.id) ? 'selected' : ''}>${escapeHtml(employee.name || 'Salarié')}${employee.cloudEmployeeId ? '' : ' · synchronisation requise'}</option>`).join('');
-    const scopeEditor = canManagePermissions ? '<label>Services autorisés (facultatif)<input name="service_ids" maxlength="240" placeholder="ex. Boulangerie, Caisse"></label>' : '';
-    const permissionOptions = canManagePermissions ? permissions
-      .filter((permission) => !DEPRECATED_PERMISSIONS.has(permission.key) && App.can(permission.module, permission.action))
-      .map((permission) => `<label><input type="checkbox" name="permission_key" value="${escapeHtml(permission.key)}">${escapeHtml(permission.label)}</label>`).join('') : '';
-    const permissionEditor = permissionOptions ? `<div style="grid-column:1/-1"><strong style="font-size:12px">Permissions complémentaires</strong><div class="pp-permission-grid" style="margin-top:8px">${permissionOptions}</div></div>` : '';
-    const dialog = openDialog(`<h2>Inviter un collaborateur</h2><p>L’entreprise est imposée par l’invitation. Le rôle, les services, le périmètre et les permissions complémentaires sont vérifiés par les RPC et les règles RLS.</p><form id="pp-invite-form"><div class="pp-dialog-grid"><label>Prénom<input name="first_name" value="${escapeHtml(selectedIdentity.first)}" required maxlength="80" autocomplete="given-name"></label><label>Nom<input name="last_name" value="${escapeHtml(selectedIdentity.last)}" required maxlength="80" autocomplete="family-name"></label><label>E-mail<input type="email" name="email" value="${escapeHtml(selectedEmployee?.email || '')}" required autocomplete="email"></label><label>Rôle<select name="role_id" required>${roleOptions}</select></label><label>Salarié lié (obligatoire pour le rôle Salarié)<select name="employee_id">${employeeOptions}</select></label><label>Établissement principal<select name="establishment_id" ${canManagePermissions ? '' : 'required'}>${establishmentOptions}</select></label>${scopeEditor}<label>Expiration<input type="date" name="expires_at" min="${new Date().toISOString().slice(0,10)}"></label>${permissionEditor}</div>${dialogButtons('Envoyer l’invitation')}</form>`);
+    const dialog = openDialog(`<h2>Inviter un collaborateur</h2><p>Choisissez un profil simple et son établissement. Les éventuelles exceptions se règlent ensuite dans Paramètres → Accès et sécurité.</p><form id="pp-invite-form"><div class="pp-dialog-grid"><label>Prénom<input name="first_name" value="${escapeHtml(selectedIdentity.first)}" required maxlength="80" autocomplete="given-name"></label><label>Nom<input name="last_name" value="${escapeHtml(selectedIdentity.last)}" required maxlength="80" autocomplete="family-name"></label><label>E-mail<input type="email" name="email" value="${escapeHtml(selectedEmployee?.email || '')}" required autocomplete="email"></label><label>Profil<select name="role_id" required>${roleOptions}</select><small id="pp-invite-role-description" style="font-weight:500;color:#68738d"></small></label><label>Salarié lié (obligatoire pour le profil Employé)<select name="employee_id">${employeeOptions}</select></label><label>Établissement<select name="establishment_id" required>${establishmentOptions}</select></label><label>Expiration<input type="date" name="expires_at" min="${new Date().toISOString().slice(0,10)}"></label></div>${dialogButtons('Envoyer l’invitation')}</form>`);
+    const inviteRoleSelect = dialog.querySelector('[name="role_id"]');
+    const inviteRoleDescription = dialog.querySelector('#pp-invite-role-description');
+    updateBusinessRoleDescription(inviteRoleSelect, inviteRoleDescription);
+    inviteRoleSelect?.addEventListener('change', () => updateBusinessRoleDescription(inviteRoleSelect, inviteRoleDescription));
     dialog.querySelector('#pp-invite-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
       const establishmentId = String(form.get('establishment_id') || '');
-      const services = String(form.get('service_ids') || '').split(',').map((value) => value.trim()).filter(Boolean);
       const role = roles.find((item) => item.id === String(form.get('role_id') || ''));
       const employeeId = String(form.get('employee_id') || '') || null;
+      if (!establishmentId) { safeToast('Choisissez un établissement.', 'err'); return; }
       if (role?.key === 'employee' && !employeeId) { safeToast('Choisissez le salarié correspondant avant d’inviter ce compte.', 'err'); return; }
       const scopes = role?.key === 'employee' ? []
-        : !canManagePermissions ? (establishmentId ? [{ scope_type: 'establishment', establishment_id: establishmentId }] : [])
-          : services.length ? services.map((serviceId) => ({ scope_type: 'service', service_id: serviceId, establishment_id: establishmentId || null }))
-            : establishmentId ? [{ scope_type: 'establishment', establishment_id: establishmentId }] : [{ scope_type: 'organization' }];
-      const permissionOverrides = canManagePermissions ? form.getAll('permission_key').map((permissionKey) => ({ permission_key: String(permissionKey), effect: 'grant' })) : [];
+        : [{ scope_type: 'establishment', establishment_id: establishmentId }];
+      const permissionOverrides = [];
       const date = String(form.get('expires_at') || '');
       const expiresAt = date ? new Date(`${date}T23:59:59`).toISOString() : undefined;
       const submit = event.currentTarget.querySelector('[type="submit"]');
@@ -1923,6 +1963,44 @@
     } catch (error) { safeToast(error.message || 'Mise à jour du compte impossible.', 'err'); }
   }
 
+  async function openAdvancedPermissionsDialog(memberId, selectedAssignmentId) {
+    if (!App.require('users', 'manage_permissions')) return;
+    const { members, assignments } = getUsersData();
+    const manageable = assignments.filter((assignment) => !memberId || assignment.member_id === memberId);
+    const assignment = manageable.find((item) => item.id === selectedAssignmentId) || manageable[0];
+    if (!assignment) { safeToast('Aucune affectation par établissement disponible.', 'err'); return; }
+    const member = members.find((item) => item.id === assignment.member_id);
+    try {
+      const { data, error } = await App.client.from('member_establishment_permissions')
+        .select('permission_key,effect').eq('assignment_id', assignment.id);
+      tableError(error, 'Autorisations avancées');
+      const current = new Map((data || []).map((item) => [item.permission_key, item.effect]));
+      const assignmentOptions = manageable.map((item) => {
+        const linkedMember = members.find((candidate) => candidate.id === item.member_id);
+        const identity = linkedMember?.profiles?.full_name || linkedMember?.profiles?.email || 'Utilisateur';
+        return `<option value="${escapeHtml(item.id)}" ${item.id === assignment.id ? 'selected' : ''}>${escapeHtml(identity)} · ${escapeHtml(item.establishments?.name || 'Établissement')}</option>`;
+      }).join('');
+      const rows = ADVANCED_EXCEPTION_PERMISSIONS.map((permission) => `<label>${escapeHtml(permission.label)}<select data-pp-advanced-exception="${escapeHtml(permission.key)}"><option value="">Valeur du profil</option><option value="grant" ${current.get(permission.key) === 'grant' ? 'selected' : ''}>Autoriser exceptionnellement</option><option value="revoke" ${current.get(permission.key) === 'revoke' ? 'selected' : ''}>Interdire explicitement</option></select></label>`).join('');
+      const dialog = openDialog(`<h2>Autorisations avancées</h2><p>À utiliser uniquement pour une exception métier. Les quatre profils standards restent la règle générale.</p><form id="pp-advanced-permissions-form"><div class="pp-dialog-grid"><label style="grid-column:1/-1">Utilisateur et établissement<select name="assignment_id">${assignmentOptions}</select></label></div><div class="pp-permission-grid">${rows}</div>${dialogButtons('Enregistrer les exceptions')}</form>`);
+      dialog.querySelector('[name="assignment_id"]')?.addEventListener('change', (event) => {
+        const nextAssignment = manageable.find((item) => item.id === event.target.value);
+        dialog.remove(); void openAdvancedPermissionsDialog(nextAssignment?.member_id, event.target.value);
+      });
+      dialog.querySelector('#pp-advanced-permissions-form')?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const exceptions = Array.from(event.currentTarget.querySelectorAll('[data-pp-advanced-exception]'))
+          .filter((select) => select.value)
+          .map((select) => ({ permission_key: select.dataset.ppAdvancedException, effect: select.value }));
+        const { error: saveError } = await App.client.rpc('set_member_establishment_exceptions', {
+          p_assignment_id: assignment.id,
+          p_exceptions: exceptions
+        });
+        tableError(saveError, 'Autorisations avancées');
+        dialog.remove(); safeToast('Exceptions enregistrées.', 'ok'); await loadUsersView();
+      });
+    } catch (error) { safeToast(error.message || 'Chargement des autorisations impossible.', 'err'); }
+  }
+
   function groupPermissions(permissions) {
     return permissions.filter((permission) => !DEPRECATED_PERMISSIONS.has(permission.key)).reduce((groups, permission) => {
       (groups[permission.module] ||= []).push(permission);
@@ -1932,22 +2010,40 @@
 
   async function openRoleAssignmentDialog(memberId) {
     if (!App.require('users', 'manage_roles') || !memberId) return;
-    const { members, roles } = getUsersData();
+    const { members, roles, establishments, assignments } = getUsersData();
     const member = members.find((item) => item.id === memberId);
     if (!member) return;
-    const availableRoles = roles.filter((role) => {
-      if (App.context?.role_key === 'owner') return true;
-      return Number(role.rank) < Number(App.context?.role_rank || 0);
-    }).filter((role) => role.is_active !== false).filter((role) => role.key !== 'employee' || member.employee_id);
+    const availableRoles = roles
+      .filter((role) => STANDARD_BUSINESS_ROLE_KEYS.has(role.key) && role.is_active !== false)
+      .filter((role) => Number(role.rank) <= Number(App.context?.role_rank || 0))
+      .filter((role) => role.key !== 'employee' || member.employee_id);
     if (!availableRoles.length) { safeToast('Aucun rôle que votre profil puisse attribuer.', 'err'); return; }
-    const dialog = openDialog(`<h2>Attribuer un rôle</h2><p>${escapeHtml(member.profiles?.full_name || member.profiles?.email || 'Utilisateur')} · le périmètre et les règles RLS restent appliqués après le changement.</p><form id="pp-member-role-form"><div class="pp-dialog-grid"><label>Rôle<select name="role_id">${availableRoles.map((role) => `<option value="${escapeHtml(role.id)}" ${role.id === member.role_id ? 'selected' : ''}>${escapeHtml(role.label)}</option>`).join('')}</select></label></div>${dialogButtons('Enregistrer le rôle')}</form>`);
+    const memberAssignments = assignments.filter((item) => item.member_id === memberId);
+    const selectedAssignment = memberAssignments.find((item) => item.establishment_id === member.primary_establishment_id)
+      || memberAssignments[0];
+    const establishmentOptions = establishments.map((establishment) => `<option value="${escapeHtml(establishment.id)}" ${establishment.id === selectedAssignment?.establishment_id ? 'selected' : ''}>${escapeHtml(establishment.name)}</option>`).join('');
+    const dialog = openDialog(`<h2>Attribuer un profil</h2><p>${escapeHtml(member.profiles?.full_name || member.profiles?.email || 'Utilisateur')} · chaque établissement possède son propre profil, contrôlé par les règles RLS.</p><form id="pp-member-role-form"><div class="pp-dialog-grid"><label>Établissement<select name="establishment_id" required>${establishmentOptions}</select></label><label>Profil<select name="role_id">${availableRoles.map((role) => `<option value="${escapeHtml(role.id)}" ${role.id === selectedAssignment?.role_id ? 'selected' : ''}>${escapeHtml(role.label)}</option>`).join('')}</select><small id="pp-edit-role-description" style="font-weight:500;color:#68738d"></small></label></div>${dialogButtons('Enregistrer le profil')}</form>`);
+    const editRoleSelect = dialog.querySelector('[name="role_id"]');
+    const editEstablishmentSelect = dialog.querySelector('[name="establishment_id"]');
+    const editRoleDescription = dialog.querySelector('#pp-edit-role-description');
+    updateBusinessRoleDescription(editRoleSelect, editRoleDescription);
+    editRoleSelect?.addEventListener('change', () => updateBusinessRoleDescription(editRoleSelect, editRoleDescription));
+    editEstablishmentSelect?.addEventListener('change', () => {
+      const existing = memberAssignments.find((item) => item.establishment_id === editEstablishmentSelect.value);
+      if (existing && editRoleSelect) editRoleSelect.value = existing.role_id;
+      updateBusinessRoleDescription(editRoleSelect, editRoleDescription);
+    });
     dialog.querySelector('#pp-member-role-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
       const fields = new FormData(event.currentTarget);
       try {
-        const { error } = await App.client.from('organization_members').update({ role_id: String(fields.get('role_id') || '') }).eq('id', memberId);
-        tableError(error, 'Rôle');
-        dialog.remove(); safeToast('Rôle mis à jour.', 'ok'); await loadUsersView();
+        const { error } = await App.client.rpc('set_member_establishment_role', {
+          p_member_id: memberId,
+          p_establishment_id: String(fields.get('establishment_id') || ''),
+          p_role_id: String(fields.get('role_id') || '')
+        });
+        tableError(error, 'Profil');
+        dialog.remove(); safeToast('Profil mis à jour.', 'ok'); await loadUsersView();
       } catch (error) { safeToast(error.message || 'Changement de rôle impossible.', 'err'); }
     });
   }
@@ -2083,8 +2179,9 @@
     } catch (error) { safeToast(error.message || 'Impossible de charger la matrice.', 'err'); }
   }
 
-  // Exposed solely for the role selector rendered in the dialog above.
-  App.openRolesDialog = (roleId) => { void openRolesDialog(roleId); };
+  // Point d'entrée public conservé pour compatibilité : il ouvre désormais la
+  // liste courte des exceptions, jamais l'ancienne matrice exhaustive.
+  App.openRolesDialog = () => { void openAdvancedPermissionsDialog(); };
 
   window.addEventListener('load', () => { void init(); }, { once: true });
 }());
