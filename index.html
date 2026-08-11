@@ -1173,6 +1173,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
           <button class="sn-item" onclick="showSP('pay',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Paie &amp; Charges</button>
           <button class="sn-item" onclick="showSP('notif',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Alertes</button>
           <button class="sn-item" onclick="showSP('clocks',this)" data-pp-permission="clock_devices.view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Pointeuses</button>
+          <button class="sn-item" onclick="showSP('access',this)" data-pp-permission="users.manage_permissions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Accès et sécurité</button>
         </nav>
         <div class="set-panel">
           <div id="sp-sites">
@@ -1203,6 +1204,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
             <div class="sp-title">Pointeuses</div>
             <div class="sp-desc">Activez et gérez les terminaux de pointage autorisés de vos établissements.</div>
             <div class="site-item"><div class="site-ico">◷</div><div class="site-inf"><div class="site-nm">Terminaux de pointage</div><div class="site-dt">Activation temporaire, révocation, archivage et codes salariés sécurisés.</div></div><button class="btn btn-primary btn-sm" onclick="openTimeClockManagement()" data-pp-permission="clock_devices.view">Gérer les pointeuses</button></div>
+          </div>
+          <div id="sp-access" style="display:none" data-pp-permission="users.manage_permissions">
+            <div class="sp-title">Accès et sécurité</div>
+            <div class="sp-desc">Les profils Administrateur, Manager, Superviseur et Employé couvrent les usages courants. Utilisez les exceptions uniquement lorsqu'une responsabilité précise l'exige.</div>
+            <div class="site-item"><div class="site-ico">&#128274;</div><div class="site-inf"><div class="site-nm">Autorisations avancées</div><div class="site-dt">Exceptions limitées par utilisateur et par établissement, contrôlées par Supabase RLS.</div></div><button class="btn btn-primary btn-sm" type="button" data-pp-user-action="roles">Gérer les exceptions</button></div>
           </div>
         </div>
       </div>
@@ -3355,7 +3361,7 @@ function syncSbTab() {
 document.addEventListener('DOMContentLoaded', function() { syncSbTab(); });
 setTimeout(function() { syncSbTab(); }, 100);
 function showSP(id,btn) {
-  ['sites','legal','pay','notif'].forEach(p=>{const e=document.getElementById('sp-'+p);if(e)e.style.display=p===id?'':'none';});
+  ['sites','legal','pay','notif','clocks','access'].forEach(p=>{const e=document.getElementById('sp-'+p);if(e)e.style.display=p===id?'':'none';});
   document.querySelectorAll('.sn-item').forEach(b=>b.classList.remove('act'));
   if(btn)btn.classList.add('act');
 }

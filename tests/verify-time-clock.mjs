@@ -94,7 +94,7 @@ includes(index, "showSP('clocks',this)", 'Settings → Time clocks tab');
 includes(index, 'openTimeClockManagement');
 includes(cloud, "module: 'clock_devices', action: 'view'", 'management UI permission guard');
 includes(kioskHtml, './pointeuse.webmanifest');
-includes(shell, 'plannipro-shell-v35');
+includes(shell, 'plannipro-shell-v36');
 includes(shell, 'requestUrl.hostname.endsWith("supabase.co")');
 
 assert.ok(!/SUPABASE_SERVICE_ROLE_KEY|service_role\s*[:=]/i.test(kiosk), 'No service role secret in browser');

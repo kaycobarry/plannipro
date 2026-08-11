@@ -70,8 +70,10 @@ includes(migration, "extensions.digest(p_token, 'sha256')", 'tamper-resistant ha
 includes(migration, 'Password setup required', 'password required before membership');
 includes(migration, 'delete from public.manager_scopes', 'stale scopes removed on reactivation');
 includes(migration, 'delete from public.user_permissions', 'stale overrides removed on reactivation');
-includes(cloud, "form.getAll('permission_key')", 'supplementary permission selector');
-includes(cloud, "scope_type: 'service'", 'service scopes in invitation');
+includes(cloud, 'STANDARD_BUSINESS_ROLE_KEYS.has(role.key)', 'invitation exposes only standard business profiles');
+includes(cloud, "if (!establishmentId)", 'an establishment is mandatory for invitations');
+includes(cloud, 'const permissionOverrides = [];', 'advanced exceptions are not granted during invitation');
+includes(cloud, "scope_type: 'establishment'", 'invitation is scoped to one establishment');
 includes(cloud, "<h3>Salariés de l’équipe</h3>", 'team employees are listed in user administration');
 includes(cloud, "data-pp-user-action=\"invite-employee\"", 'one-click employee invitation action');
 includes(cloud, "data-pp-user-action=\"sync-invite-employee\"", 'new employees can be synchronized before invitation');
@@ -91,7 +93,7 @@ includes(migration, 'alter publication supabase_realtime add table public.invita
 includes(cloud, "table: 'invitations'", 'invitation Realtime subscription');
 includes(migration, 'revoke all on function public.bootstrap_company()', 'bootstrap EXECUTE lockdown');
 includes(migration, 'grant execute on function public.bootstrap_company() to authenticated', 'authenticated bootstrap grant');
-includes(shell, 'plannipro-shell-v35', 'new application shell cache');
+includes(shell, 'plannipro-shell-v36', 'new application shell cache');
 
 new vm.Script(cloud, { filename: 'plannipro-cloud.js' });
 new vm.Script(shell, { filename: 'sw.js' });
