@@ -34,3 +34,28 @@ jobs:
 
       - name: Vérifier les espaces et marqueurs de conflit
         run: git diff --check
+
+  tenant-isolation:
+    name: Isolation distante multi-magasin
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: static-tests
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      PLANNIPRO_TEST_NANTES_EMAIL: ${{ secrets.PLANNIPRO_TEST_NANTES_EMAIL }}
+      PLANNIPRO_TEST_NANTES_PASSWORD: ${{ secrets.PLANNIPRO_TEST_NANTES_PASSWORD }}
+      PLANNIPRO_TEST_OTHER_EMAIL: ${{ secrets.PLANNIPRO_TEST_OTHER_EMAIL }}
+      PLANNIPRO_TEST_OTHER_PASSWORD: ${{ secrets.PLANNIPRO_TEST_OTHER_PASSWORD }}
+      PLANNIPRO_TEST_NANTES_ORGANIZATION_ID: ${{ secrets.PLANNIPRO_TEST_NANTES_ORGANIZATION_ID }}
+      PLANNIPRO_TEST_OTHER_ORGANIZATION_ID: ${{ secrets.PLANNIPRO_TEST_OTHER_ORGANIZATION_ID }}
+    steps:
+      - name: Récupérer les sources
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tester RLS, Pointeuse, Storage et Realtime avec deux JWT
+        run: node tests/remote-tenant-isolation.mjs
