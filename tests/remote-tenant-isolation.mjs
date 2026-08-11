@@ -226,6 +226,7 @@ for (const [bucket, path] of storageCandidates) {
 }
 
 const probeLegacyId = `isolation-realtime-${crypto.randomUUID()}`;
+const probeRecordType = 'shift';
 let ownRealtime;
 let crossRealtime;
 try {
@@ -236,9 +237,9 @@ try {
     headers: { 'Content-Type': 'application/json', Prefer: 'return=representation' },
     body: JSON.stringify({
       organization_id: otherOrganizationId,
-      record_type: 'notification',
+      record_type: probeRecordType,
       legacy_id: probeLegacyId,
-      payload: { isolationProbe: true }
+      payload: { isolationProbe: true, date: '2099-12-31', start: '00:00', end: '00:15' }
     })
   });
   assert.ok(insert.ok, `création de la sonde Realtime refusée (${insert.status})`);
@@ -248,12 +249,12 @@ try {
 } finally {
   ownRealtime?.socket.close();
   crossRealtime?.socket.close();
-  await api(`business_records?organization_id=eq.${otherOrganizationId}&record_type=eq.notification&legacy_id=eq.${encodeURIComponent(probeLegacyId)}`, other.access_token, {
+  await api(`business_records?organization_id=eq.${otherOrganizationId}&record_type=eq.${probeRecordType}&legacy_id=eq.${encodeURIComponent(probeLegacyId)}`, other.access_token, {
     method: 'DELETE', headers: { Prefer: 'return=minimal' }
   }).catch(() => {});
 }
 
-const cleanup = await rows(`business_records?select=id&organization_id=eq.${otherOrganizationId}&record_type=eq.notification&legacy_id=eq.${encodeURIComponent(probeLegacyId)}`, other.access_token);
+const cleanup = await rows(`business_records?select=id&organization_id=eq.${otherOrganizationId}&record_type=eq.${probeRecordType}&legacy_id=eq.${encodeURIComponent(probeLegacyId)}`, other.access_token);
 assert.deepEqual(cleanup, [], 'la sonde Realtime n’a pas été supprimée');
 
 console.log(`Isolation distante réelle: 2 JWT, ${tenantTables.length} tables, Pointeuse, Storage et Realtime validés.`);
