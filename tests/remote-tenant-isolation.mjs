@@ -182,6 +182,13 @@ const [nantesSeesOtherProfile, otherSeesNantesProfile] = await Promise.all([
 assert.deepEqual(nantesSeesOtherProfile, [], 'Nantes voit le profil du magasin fictif');
 assert.deepEqual(otherSeesNantesProfile, [], 'le magasin fictif voit le profil Nantes');
 
+const otherEstablishments = await rows(
+  `establishments?select=id&organization_id=eq.${otherOrganizationId}&limit=1`,
+  other.access_token
+);
+assert.ok(otherEstablishments[0]?.id, 'aucun établissement disponible pour la sonde du magasin fictif');
+const otherEstablishmentId = otherEstablishments[0].id;
+
 for (const [token, allowedOrganization, forbiddenOrganization] of [
   [nantes.access_token, nantesOrganizationId, otherOrganizationId],
   [other.access_token, otherOrganizationId, nantesOrganizationId]
@@ -237,6 +244,7 @@ try {
     headers: { 'Content-Type': 'application/json', Prefer: 'return=representation' },
     body: JSON.stringify({
       organization_id: otherOrganizationId,
+      establishment_id: otherEstablishmentId,
       record_type: probeRecordType,
       legacy_id: probeLegacyId,
       payload: { isolationProbe: true, date: '2099-12-31', start: '00:00', end: '00:15' }
