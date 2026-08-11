@@ -45,6 +45,16 @@ La recette multi-rôles nécessite uniquement des comptes de recette non privil�
 npm run test:remote:rbac
 ```
 
+La recette d’isolation complète utilise deux comptes Auth réels appartenant à deux organisations distinctes. Elle contrôle les lectures et écritures RLS croisées, la Pointeuse, Storage et Realtime, puis supprime sa sonde temporaire :
+
+```bash
+npm run test:remote:isolation
+```
+
+Les six variables requises sont déclarées au début de `tests/remote-tenant-isolation.mjs`. Les mots de passe de recette restent exclusivement dans l’environnement d’exécution et ne doivent jamais être enregistrés dans le dépôt.
+
+Le workflow manuel `.github/workflows/tenant-isolation.yml` exécute la même matrice avec des secrets GitHub. Utiliser deux comptes dédiés à la recette : un compte limité rattaché à Nantes Charcot et le propriétaire du magasin fictif. Ne jamais enregistrer le mot de passe du gérant de production dans GitHub.
+
 ## Développement local
 
 Servir le dossier avec un serveur HTTP, par exemple :
@@ -68,6 +78,7 @@ Pour une installation neuve :
 7. `supabase/planning-publications.sql`
 8. `supabase/security-performance-hardening.sql`
 9. `supabase/fix-membership-update-recursion.sql`
+10. `supabase/tenant-isolation-hardening.sql`
 
 Toutes les nouvelles tables exposées à la Data API doivent disposer de `GRANT` explicites et de RLS avant leur utilisation dans le navigateur.
 
