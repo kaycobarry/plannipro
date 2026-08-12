@@ -7,7 +7,10 @@ const key = config.match(/publishableKey:\s*['"]([^'"]+)/)?.[1];
 assert.ok(url && key, 'Configuration publique Supabase introuvable');
 
 const headers = { apikey: key, Authorization: `Bearer ${key}` };
-const tables = ['organizations', 'employees', 'employee_private_data', 'business_records', 'documents', 'audit_logs'];
+const tables = [
+  'organizations', 'employees', 'employee_private_data', 'business_records', 'documents', 'audit_logs',
+  'hr_document_alerts', 'time_clock_devices', 'employee_time_clock_credentials', 'time_clock_events'
+];
 
 for (const table of tables) {
   const response = await fetch(`${url}/rest/v1/${table}?select=*&limit=1`, { headers });

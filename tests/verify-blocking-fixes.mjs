@@ -44,7 +44,7 @@ assert.equal(
   JSON.stringify(decisionContext.result),
   JSON.stringify({ staleCache: true, pendingOffline: false, missingCachePending: false, remoteData: true, remoteDataPending: false })
 );
-assert.ok(/const remote = await fetchRemoteState\(\);[\s\S]{0,600}applyRemoteState\(remote\);/.test(cloud), 'syncNow must apply the post-push remote state once the queue is stable');
+assert.ok(/const remote = await fetchRemoteState\(identity\);[\s\S]{0,600}applyRemoteState\(remote, identity\);/.test(cloud), 'syncNow must apply the post-push remote state once the queue is stable');
 assert.ok(/if \(pending\?\.state\) \{\s*const synced = await syncNow\('restore-pending'\);/.test(cloud), 'restore must flush a queued offline snapshot before pulling remote data');
 assert.ok(cloud.includes("restored?.pending ? 'Synchronisation en attente'"), 'a failed startup flush must remain visibly pending');
 assert.ok(cloud.includes("dbDeleteIfUnchanged('queue', pendingKey, queueGeneration(pending))"), 'queue deletion must compare the pushed generation atomically');
@@ -53,16 +53,21 @@ assert.ok(cloud.includes("db.transaction(['kv', 'queue'], 'readwrite')"), 'cache
 const restoreSource = extractBetween(cloud, '  async function restoreOrPull(', '  function captureLocalChange(');
 const restartContext = {
   App: {
-    context: { organization_id: 'org-1', role_key: 'manager' },
+    context: { organization_id: 'org-1', role_key: 'manager', employee_id: null },
     user: { id: 'user-1' }, cacheKey: 'cache-1', applyingRemote: false,
-    status: () => {}
+    identityEpoch: 1, status: () => {}
   },
   S: {}, navigator: { onLine: true },
-  dbGet: async (store) => store === 'queue'
+  currentIdentity: () => ({
+    epoch: 1, userId: 'user-1', organizationId: 'org-1', cacheKey: 'cache-1',
+    context: { organization_id: 'org-1', employee_id: null }
+  }),
+  assertIdentity: () => {},
+  readScopedLocalRecord: async (store) => store === 'queue'
     ? { state: { employees: [], shifts: [{ id: 'offline-1' }] } }
     : null,
   dbPut: async () => { throw new Error('cache rewrite before pending push'); },
-  localStateHasContent: () => false,
+  resetMemoryForIsolation: () => {},
   clone: (value) => JSON.parse(JSON.stringify(value)),
   normalizeState: () => {}, renderAll: () => {},
   syncNow: async (reason) => {
@@ -70,8 +75,9 @@ const restartContext = {
     return true;
   },
   fetchRemoteState: async () => { throw new Error('remote pull before pending push'); },
-  remoteHasContent: () => false, shouldApplyRemoteState: () => false,
-  applyRemoteState: () => {}, existingImportForm: () => {}, archiveAndClearLegacyStorage: async () => {},
+  shouldApplyRemoteState: () => false, applyRemoteState: () => {},
+  snapshotForIdentity: () => ({}), scopedCacheValue: () => ({}),
+  archiveAndClearLegacyStorage: async () => {},
   syncReason: null, result: null
 };
 vm.runInNewContext(`${restoreSource}\nresult = restoreOrPull();`, restartContext);
@@ -82,15 +88,23 @@ assert.equal(JSON.stringify(restartContext.S.shifts), JSON.stringify([{ id: 'off
 const syncSource = extractBetween(cloud, '  async function syncNow(', '\n\n  App.restoreOrPull =');
 let queuedRace = { generation: 'p1', state: { id: 'p1' } };
 const pushedRace = [];
+const raceIdentity = {
+  epoch: 1, userId: 'user-1', organizationId: 'org-1', cacheKey: 'cache-1',
+  context: { organization_id: 'org-1' }
+};
 const syncContext = {
   App: {
     session: {}, context: { organization_id: 'org-1' }, user: { id: 'user-1' },
     syncing: false, localChangeRevision: 0, cacheKey: 'cache-1', lastError: null,
-    status: () => {}, syncTimer: null
+    identityEpoch: 1, switchingContext: false, status: () => {}, syncTimer: null
   },
   navigator: { onLine: true },
+  currentIdentity: () => raceIdentity,
+  identityIsCurrent: () => true,
+  assertIdentity: () => {},
   refreshContext: async () => {},
-  dbGet: async (store) => store === 'queue' ? queuedRace : null,
+  readScopedLocalRecord: async (store) => store === 'queue' ? queuedRace : null,
+  clone: (value) => JSON.parse(JSON.stringify(value)),
   pushSnapshot: async (state) => {
     pushedRace.push(state.id);
     if (state.id === 'p1') {
@@ -106,7 +120,7 @@ const syncContext = {
   queueGeneration: (entry) => entry?.generation,
   fetchRemoteState: async () => ({ employees: [], records: [], documents: [] }),
   applyRemoteState: () => { syncContext.applied = true; },
-  dbPut: async () => {}, snapshotState: () => ({}),
+  dbPut: async () => {}, snapshotForIdentity: () => ({}), scopedCacheValue: () => ({}),
   scheduleQueuedSync: () => { syncContext.scheduled = true; },
   safeToast: () => {}, logout: async () => {},
   applied: false, scheduled: false, result: null
@@ -164,6 +178,8 @@ const applySource = extractBetween(cloud, '  function applyRemoteState(', '  asy
 const applyContext = {
   App: { context: { organization_id: 'org-1', employee_id: null }, applyingRemote: false },
   S: { weekStart: null, settings: {}, meta: {} },
+  assertIdentity: () => {},
+  currentIdentity: () => ({ organizationId: 'org-1', context: { employee_id: null } }),
   normalizeState: () => {}, renderAll: () => {}, result: null
 };
 vm.runInNewContext(`${applySource}\napplyRemoteState({

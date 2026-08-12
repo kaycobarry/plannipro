@@ -1949,6 +1949,51 @@ async function readStateFromIndexedDB() {
   }
 }
 
+async function deleteStateFromIndexedDB() {
+  if (!getIndexedDBFactory()) return false;
+  // A write started before Cloud mode became active must finish before the
+  // unscoped legacy record is removed, otherwise it could reappear on logout.
+  try { await stateWriteQueue; } catch (e) { /* the failed write is already ignored */ }
+  let db;
+  try {
+    db = await openStateDatabase();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STATE_DB_STORE, 'readwrite');
+      tx.objectStore(STATE_DB_STORE).delete(STATE_DB_RECORD);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Suppression IndexedDB impossible'));
+      tx.onabort = () => reject(tx.error || new Error('Suppression IndexedDB annulée'));
+    });
+    return true;
+  } catch (e) {
+    console.warn('PlanniPro : suppression du stockage historique indisponible', e);
+    return false;
+  } finally {
+    if (db) db.close();
+  }
+}
+
+function resetBusinessStateForIsolation() {
+  S = {
+    employees: [], shifts: [], absences: [], punchLog: [], sites: [],
+    erpEntries: [], registre: [], templates: [],
+    locks: {week: {}, day: {}}, weekStart: null,
+    settings: {legalAlerts:true, overtimeAlert:true, chargesRate:42, otThreshold:35},
+    meta: {initialized:false, schemaVersion:4}
+  };
+  normalizeState();
+  if (typeof renderAll === 'function') renderAll();
+  return true;
+}
+
+// Narrow bridge used by the cloud layer to retire the former global cache and
+// to blank the previous tenant before another identity is displayed.
+window.PlanniProStateIsolation = Object.freeze({
+  readLegacySnapshot: readStateFromIndexedDB,
+  clearLegacySnapshot: deleteStateFromIndexedDB,
+  resetMemory: resetBusinessStateForIsolation
+});
+
 function queueStateSnapshot(payload) {
   if (!getIndexedDBFactory()) return false;
   stateWriteQueue = stateWriteQueue
@@ -1983,11 +2028,13 @@ function save() {
   const cloudOnly = !!(window.PlanniProCloud && typeof window.PlanniProCloud.usePrivateCache === 'function' && window.PlanniProCloud.usePrivateCache());
   const localSaved = cloudOnly ? false : storageSet('localStorage', STATE_STORAGE_KEY, payload);
   const sessionSaved = cloudOnly ? false : storageSet('sessionStorage', STATE_STORAGE_KEY, payload);
-  const indexedDBQueued = queueStateSnapshot(payload);
-  const persisted = localSaved || sessionSaved || indexedDBQueued;
+  const indexedDBQueued = cloudOnly ? false : queueStateSnapshot(payload);
+  // In Cloud mode the wrapper queues the scoped snapshot immediately after
+  // this function returns. Report success without touching the legacy stores.
+  const persisted = cloudOnly || localSaved || sessionSaved || indexedDBQueued;
   document.documentElement?.setAttribute(
     'data-storage-source',
-    localSaved ? 'localStorage' : sessionSaved ? 'sessionStorage' : indexedDBQueued ? 'indexedDB' : 'unavailable'
+    cloudOnly ? 'cloud-private' : localSaved ? 'localStorage' : sessionSaved ? 'sessionStorage' : indexedDBQueued ? 'indexedDB' : 'unavailable'
   );
   if (!persisted) console.warn('PlanniPro : aucun stockage local n’est disponible');
   return persisted;
@@ -6939,7 +6986,7 @@ renderAll = function() {
 </script>
 <script src="./supabase-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.2" integrity="sha384-B2duOBIryCXbX4eDE4BdJwtNkQMRQde3o6IsjfPW28E6aH1CYE96hHeZRG3zY56O" crossorigin="anonymous"></script>
-<script src="./plannipro-cloud.js?v=hardening1"></script>
+<script src="./plannipro-cloud.js?v=isolation1"></script>
 <script src="./plannipro-vault.js?v=logout3"></script>
 <script src="./plannipro-publications.js?v=topbar3"></script>
 </body>

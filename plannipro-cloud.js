@@ -88,7 +88,12 @@
     realtimeChannel: null,
     planningPublicationsAvailable: false,
     platformAdmin: false,
-    usePrivateCache: () => Boolean(App.session && App.context),
+    identityEpoch: 0,
+    privateModeActivated: true,
+    switchingContext: false,
+    // The authenticated application never writes business data to the former
+    // origin-wide cache. Scoped IndexedDB keys below are the only local source.
+    usePrivateCache: () => App.privateModeActivated,
     can(module, action = 'view') {
       if (!App.context || !Array.isArray(App.context.permissions)) return false;
       const key = `${module}.${action}`;
@@ -135,15 +140,124 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  class StaleIdentityError extends Error {
+    constructor() {
+      super('Le contexte utilisateur ou magasin a changé pendant l’opération.');
+      this.name = 'StaleIdentityError';
+    }
+  }
+
+  function currentIdentity() {
+    if (!App.user?.id || !App.context?.organization_id || !App.cacheKey) return null;
+    return Object.freeze({
+      epoch: App.identityEpoch,
+      userId: String(App.user.id),
+      organizationId: String(App.context.organization_id),
+      cacheKey: String(App.cacheKey),
+      context: clone(App.context)
+    });
+  }
+
+  function identityIsCurrent(identity) {
+    return Boolean(identity)
+      && identity.epoch === App.identityEpoch
+      && identity.userId === String(App.user?.id || '')
+      && identity.organizationId === String(App.context?.organization_id || '')
+      && identity.cacheKey === String(App.cacheKey || '');
+  }
+
+  function assertIdentity(identity) {
+    if (!identityIsCurrent(identity)) throw new StaleIdentityError();
+  }
+
+  function beginIdentityTransition() {
+    App.identityEpoch += 1;
+    clearTimeout(App.syncTimer);
+    App.syncTimer = null;
+  }
+
+  function snapshotForIdentity(identity) {
+    const snapshot = snapshotState();
+    snapshot.meta = {
+      ...(snapshot.meta || {}),
+      cloudOrganizationId: identity.organizationId
+    };
+    return snapshot;
+  }
+
+  function scopedCacheValue(identity, state, details = {}) {
+    return {
+      ...details,
+      userId: identity.userId,
+      organizationId: identity.organizationId,
+      cacheKey: identity.cacheKey,
+      state
+    };
+  }
+
+  function scopeLocalRecord(value, identity) {
+    if (!value?.state) return null;
+    const taggedUser = value.userId == null ? null : String(value.userId);
+    const taggedOrganization = value.organizationId == null ? null : String(value.organizationId);
+    const stateOrganization = value.state?.meta?.cloudOrganizationId == null
+      ? null
+      : String(value.state.meta.cloudOrganizationId);
+    if ((taggedUser && taggedUser !== identity.userId)
+      || (taggedOrganization && taggedOrganization !== identity.organizationId)
+      || (stateOrganization && stateOrganization !== identity.organizationId)) return null;
+    return {
+      ...value,
+      userId: identity.userId,
+      organizationId: identity.organizationId,
+      cacheKey: identity.cacheKey,
+      state: {
+        ...value.state,
+        meta: { ...(value.state.meta || {}), cloudOrganizationId: identity.organizationId }
+      }
+    };
+  }
+
+  async function readScopedLocalRecord(store, key, identity) {
+    assertIdentity(identity);
+    const raw = await dbGet(store, key);
+    assertIdentity(identity);
+    if (!raw?.state) return null;
+    const scoped = scopeLocalRecord(raw, identity);
+    if (!scoped) {
+      await dbPut('backups', `quarantine:${store}:${identity.userId}:${identity.organizationId}:${Date.now()}`, {
+        record: raw,
+        quarantinedAt: new Date().toISOString(),
+        reason: 'tenant-mismatch'
+      });
+      await dbDelete(store, key);
+      if (identityIsCurrent(identity)) {
+        safeToast('Un cache local associé à un autre magasin a été isolé et ignoré.', 'warn');
+      }
+      return null;
+    }
+    // Upgrade older entries that were already protected by a user+organization
+    // key but did not yet carry explicit ownership metadata.
+    if (raw.userId !== scoped.userId || raw.organizationId !== scoped.organizationId
+      || raw.state?.meta?.cloudOrganizationId !== scoped.state.meta.cloudOrganizationId) {
+      await dbPut(store, key, scoped);
+      assertIdentity(identity);
+    }
+    return scoped;
+  }
+
   let queueSequence = 0;
 
-  function makeQueueEntry(reason, state) {
+  function makeQueueEntry(reason, state, identity = currentIdentity()) {
+    if (!identity) throw new StaleIdentityError();
     queueSequence += 1;
     const randomPart = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
     return {
       generation: `${Date.now()}-${queueSequence}-${randomPart}`,
       reason,
       state,
+      userId: identity.userId,
+      organizationId: identity.organizationId,
+      cacheKey: identity.cacheKey,
       baseRecordRevisionsCaptured: true,
       baseRecordRevisions: Object.fromEntries(App.remoteRecordRevisions || []),
       queuedAt: new Date().toISOString()
@@ -428,24 +542,62 @@
     } catch (_) { return false; }
   }
 
-  async function archiveAndClearLegacyStorage() {
+  function localStateBelongsTo(identity) {
+    return Boolean(identity)
+      && String(S?.meta?.cloudOrganizationId || '') === identity.organizationId;
+  }
+
+  function resetMemoryForIsolation() {
+    App.applyingRemote = true;
+    try {
+      if (typeof window.PlanniProStateIsolation?.resetMemory === 'function') {
+        window.PlanniProStateIsolation.resetMemory();
+      } else {
+        S = {
+          employees: [], shifts: [], absences: [], punchLog: [], sites: [],
+          erpEntries: [], registre: [], templates: [], locks: { week: {}, day: {} },
+          weekStart: null, settings: {}, meta: { initialized: false, schemaVersion: 4 }
+        };
+        if (typeof normalizeState === 'function') normalizeState();
+        if (typeof renderAll === 'function') renderAll();
+      }
+    } finally { App.applyingRemote = false; }
+  }
+
+  async function archiveAndClearLegacyStorage(identity = currentIdentity()) {
     let local = null;
     let session = null;
     try {
       local = window.localStorage.getItem('ppv3');
       session = window.sessionStorage.getItem('ppv3');
-    } catch (_) { return false; }
-    if (!local && !session) return false;
-    await dbPut('backups', `legacy-raw:${App.user?.id || 'unknown'}:${Date.now()}`, {
-      localStorage: local,
-      sessionStorage: session,
-      migratedAt: new Date().toISOString()
-    });
+    } catch (_) { /* storage can be disabled */ }
+    let indexedSnapshot = null;
+    try { indexedSnapshot = await window.PlanniProStateIsolation?.readLegacySnapshot?.(); }
+    catch (_) { /* the clear attempt below remains mandatory */ }
+
+    const parse = (raw) => {
+      try { return raw ? JSON.parse(raw) : null; }
+      catch (_) { return null; }
+    };
+    const candidates = [parse(local), parse(session), indexedSnapshot?.state].filter(Boolean);
+    const matching = identity
+      ? candidates.filter((state) => String(state?.meta?.cloudOrganizationId || '') === identity.organizationId)
+      : [];
+    // Only a snapshot carrying the exact tenant id may be retained. Ambiguous
+    // pre-cloud data is cleared, never attached to whichever user logs in next.
+    if (matching.length) {
+      await dbPut('backups', `legacy-scoped:${identity.userId}:${identity.organizationId}:${Date.now()}`, {
+        states: matching,
+        migratedAt: new Date().toISOString()
+      });
+    }
     try {
       window.localStorage.removeItem('ppv3');
       window.sessionStorage.removeItem('ppv3');
     } catch (_) { /* storage can be disabled */ }
-    return true;
+    try { await window.PlanniProStateIsolation?.clearLegacySnapshot?.(); }
+    catch (_) { /* helper already reports the failure */ }
+    return Boolean(local || session || indexedSnapshot);
   }
 
   async function refreshContext() {
@@ -459,7 +611,7 @@
     return App.context;
   }
 
-  async function dbRebaseQueueIfChanged(store, key, expectedGeneration, baseRecordRevisions) {
+  async function dbRebaseQueueIfChanged(store, key, expectedGeneration, baseRecordRevisions, identity) {
     const db = await openCloudDatabase();
     try {
       return await new Promise((resolve, reject) => {
@@ -470,7 +622,9 @@
         request.onsuccess = () => {
           const stored = request.result;
           const current = stored?.value || null;
-          if (current?.state && queueGeneration(current) !== expectedGeneration) {
+          if (identityIsCurrent(identity) && current?.state
+            && scopeLocalRecord(current, identity)
+            && queueGeneration(current) !== expectedGeneration) {
             current.baseRecordRevisionsCaptured = true;
             current.baseRecordRevisions = { ...(baseRecordRevisions || {}) };
             objectStore.put({ ...stored, value: current, updatedAt: new Date().toISOString() });
@@ -519,6 +673,19 @@
   }
 
   async function activateSessionNow(session, eventName) {
+    const previousUserId = String(App.user?.id || '');
+    const nextUserId = String(session?.user?.id || '');
+    if (previousUserId !== nextUserId) {
+      const staleChannel = App.realtimeChannel;
+      beginIdentityTransition();
+      App.realtimeChannel = null;
+      App.context = null;
+      App.contexts = EMPTY_ARRAY;
+      App.cacheKey = null;
+      App.syncing = false;
+      resetMemoryForIsolation();
+      if (staleChannel) void App.client?.removeChannel?.(staleChannel).catch(() => {});
+    }
     App.session = session;
     App.user = session?.user || null;
     if (!session) {
@@ -526,11 +693,14 @@
       App.context = null;
       App.contexts = EMPTY_ARRAY;
       App.remoteReady = false;
+      resetMemoryForIsolation();
+      void archiveAndClearLegacyStorage(null);
       authForm('login');
       return;
     }
     try {
       await waitForLocalState();
+      await archiveAndClearLegacyStorage(null);
       if (eventName === 'PASSWORD_RECOVERY') { authForm('update-password'); return; }
       const invite = getInviteToken();
       if (invite) {
@@ -594,23 +764,22 @@
     if (error) throw error;
     await refreshContext();
     if (!App.context) throw new Error('L’espace a été créé mais les droits ne sont pas encore disponibles.');
-    const hasLegacy = localStateHasContent();
-    if (hasLegacy) await dbPut('backups', `legacy:${App.user.id}:${Date.now()}`, clone(S));
-    else {
-      App.applyingRemote = true;
-      try {
-        S = { ...S, employees: [], shifts: [], absences: [], punchLog: [], erpEntries: [], registre: [], sites: [] };
-      } finally { App.applyingRemote = false; }
-    }
-    const firstSnapshot = snapshotState();
-    const pendingKey = `pending:${App.user.id}:${App.context.organization_id}`;
+    const identity = currentIdentity();
+    assertIdentity(identity);
+    await archiveAndClearLegacyStorage(identity);
+    assertIdentity(identity);
+    // A new company always starts empty. Browser data from a previous company
+    // can only be restored from that company's own scoped cache.
+    resetMemoryForIsolation();
+    const firstSnapshot = snapshotForIdentity(identity);
+    const pendingKey = `pending:${identity.userId}:${identity.organizationId}`;
     await dbPutStateAndQueue(
-      App.cacheKey,
-      { state: firstSnapshot, cachedRemote: true, savedAt: new Date().toISOString() },
+      identity.cacheKey,
+      scopedCacheValue(identity, firstSnapshot, { cachedRemote: true, savedAt: new Date().toISOString() }),
       pendingKey,
-      makeQueueEntry('first-import', firstSnapshot)
+      makeQueueEntry('first-empty-workspace', firstSnapshot, identity)
     );
-    const synced = await App.syncNow?.('first-import');
+    const synced = await App.syncNow?.('first-empty-workspace');
     if (synced) {
       try { await archiveAndClearLegacyStorage(); }
       catch (backupError) { console.warn('Sauvegarde legacy à finaliser', backupError); }
@@ -632,15 +801,18 @@
   }
 
   async function importExistingLocalState() {
-    if (!App.context || !localStateHasContent()) throw new Error('Aucune donnée locale à importer.');
-    await dbPut('backups', `legacy:${App.user.id}:${Date.now()}`, clone(S));
-    const snapshot = snapshotState();
-    const pendingKey = `pending:${App.user.id}:${App.context.organization_id}`;
+    const identity = currentIdentity();
+    if (!identity || !localStateHasContent() || !localStateBelongsTo(identity)) {
+      throw new Error('Import refusé : ces données locales ne portent pas l’identifiant de ce magasin.');
+    }
+    await dbPut('backups', `legacy:${identity.userId}:${identity.organizationId}:${Date.now()}`, clone(S));
+    const snapshot = snapshotForIdentity(identity);
+    const pendingKey = `pending:${identity.userId}:${identity.organizationId}`;
     await dbPutStateAndQueue(
-      App.cacheKey,
-      { state: snapshot, cachedRemote: true, savedAt: new Date().toISOString() },
+      identity.cacheKey,
+      scopedCacheValue(identity, snapshot, { cachedRemote: true, savedAt: new Date().toISOString() }),
       pendingKey,
-      makeQueueEntry('legacy-import', snapshot)
+      makeQueueEntry('legacy-import', snapshot, identity)
     );
     const synced = await App.syncNow('legacy-import');
     if (!synced) throw new Error('Les données restent en attente locale : reconnectez l’appareil puis relancez la synchronisation.');
@@ -656,8 +828,7 @@
 
     // Clear the authenticated UI and in-memory identity immediately. Realtime
     // teardown can wait for a socket timeout, but must never prevent logout.
-    clearTimeout(App.syncTimer);
-    App.syncTimer = null;
+    beginIdentityTransition();
     App.realtimeChannel = null;
     App.session = null;
     App.user = null;
@@ -670,6 +841,7 @@
     App.remoteReady = false;
     App.syncConflicts = [];
     App.remoteRecordRevisions = new Map();
+    resetMemoryForIsolation();
     document.querySelector('.pp-account')?.remove();
     authForm('login');
 
@@ -688,6 +860,55 @@
       }
       try { await window.PlanniProVault?.shutdown?.(); } catch (_) { /* Identity and Realtime are already cleared. */ }
       try { await window.PlanniProPublications?.shutdown?.(); } catch (_) { /* Publication channel is already isolated from the signed-out UI. */ }
+      try { await archiveAndClearLegacyStorage(null); } catch (_) { /* No tenant data is displayed after reset. */ }
+    }
+  }
+
+  async function waitForSyncIdle(timeout = 15000) {
+    const deadline = Date.now() + timeout;
+    while (App.syncing && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    return !App.syncing;
+  }
+
+  async function switchOrganization(organizationId) {
+    const next = App.contexts.find((context) => context.organization_id === organizationId);
+    if (!next || next.organization_id === App.context?.organization_id || App.switchingContext) return false;
+    App.switchingContext = true;
+    try {
+      if (App.syncing) {
+        App.status('Fin de la synchronisation avant changement de magasin…', 'pending');
+        if (!await waitForSyncIdle()) throw new Error('La synchronisation en cours doit se terminer avant de changer de magasin.');
+      }
+      gate('Chargement du magasin sélectionné…');
+      const oldChannel = App.realtimeChannel;
+      beginIdentityTransition();
+      App.realtimeChannel = null;
+      if (oldChannel) {
+        try { await App.client.removeChannel(oldChannel); } catch (_) { /* stale callbacks are invalidated by the epoch */ }
+      }
+      await window.PlanniProVault?.shutdown?.();
+      await window.PlanniProPublications?.shutdown?.();
+      resetMemoryForIsolation();
+      App.context = next;
+      App.cacheKey = `state:${App.user.id}:${next.organization_id}`;
+      await dbPut('kv', `active-org:${App.user.id}`, organizationId);
+      await App.restoreOrPull?.();
+      subscribeRealtime();
+      App.remoteReady = true;
+      hideGate();
+      renderAccount();
+      applyPermissionsToUi();
+      window.dispatchEvent(new CustomEvent('plannipro:cloud-ready'));
+      return true;
+    } catch (error) {
+      console.error('Changement de magasin PlanniPro', error);
+      safeToast(error.message || 'Changement de magasin impossible.', 'err');
+      await logout();
+      return false;
+    } finally {
+      App.switchingContext = false;
     }
   }
 
@@ -708,18 +929,7 @@
       void logout();
     }));
     root.querySelector('[data-pp-org-switch]')?.addEventListener('change', async (event) => {
-      const organizationId = event.target.value;
-      const next = App.contexts.find((context) => context.organization_id === organizationId);
-      if (!next) return;
-      await window.PlanniProVault?.shutdown?.();
-      App.context = next;
-      App.cacheKey = `state:${App.user.id}:${next.organization_id}`;
-      await dbPut('kv', `active-org:${App.user.id}`, organizationId);
-      await App.restoreOrPull?.();
-      subscribeRealtime();
-      renderAccount();
-      applyPermissionsToUi();
-      window.dispatchEvent(new CustomEvent('plannipro:cloud-ready'));
+      await switchOrganization(event.target.value);
     });
   }
 
@@ -1009,8 +1219,9 @@
     }
   }
 
-  async function fetchRemoteState() {
-    const organizationId = App.context.organization_id;
+  async function fetchRemoteState(identity = currentIdentity()) {
+    assertIdentity(identity);
+    const organizationId = identity.organizationId;
     const collectRows = async (createQuery, label, pageSize = 500) => {
       const rows = [];
       for (let from = 0; ; from += pageSize) {
@@ -1030,6 +1241,7 @@
         : Promise.resolve([]),
       collectRows(() => App.client.from('business_records').select('*').eq('organization_id', organizationId).is('deleted_at', null).order('updated_at'), 'Données métier')
     ]);
+    assertIdentity(identity);
     return {
       sites: sitesResult, employees: employeesResult, privateData: privateResult, selfService: selfServiceResult,
       records: recordsResult
@@ -1044,7 +1256,8 @@
     return !pending?.state;
   }
 
-  function applyRemoteState(remote) {
+  function applyRemoteState(remote, identity = currentIdentity()) {
+    assertIdentity(identity);
     App.remoteRecordRevisions = new Map((remote.records || []).map((record) => [
       `${record.record_type}:${record.legacy_id}`,
       Number(record.revision) || 0
@@ -1080,7 +1293,7 @@
       if (typeof normalizeEmployeeRecord === 'function') return normalizeEmployeeRecord(record);
       return record;
     });
-    App.currentEmployeeLegacyId = employees.find((employee) => employee.cloudEmployeeId === App.context?.employee_id)?.id || null;
+    App.currentEmployeeLegacyId = employees.find((employee) => employee.cloudEmployeeId === identity.context?.employee_id)?.id || null;
     const collections = { shifts: [], absences: [], punchLog: [], erpEntries: [], registre: [] };
     let remoteSettings = null;
     remote.records.forEach((record) => {
@@ -1114,7 +1327,7 @@
         settings: remoteSettings?.settings && typeof remoteSettings.settings === 'object'
           ? remoteSettings.settings
           : {},
-        meta: { ...(S.meta || {}), cloudOrganizationId: App.context.organization_id, cloudUpdatedAt: new Date().toISOString() }
+        meta: { ...(S.meta || {}), cloudOrganizationId: identity.organizationId, cloudUpdatedAt: new Date().toISOString() }
       };
       if (typeof normalizeState === 'function') normalizeState();
       if (typeof renderAll === 'function') renderAll();
@@ -1167,8 +1380,9 @@
     ]));
   }
 
-  async function pruneRemote(snapshot, remoteRecords) {
-    const organizationId = App.context.organization_id;
+  async function pruneRemote(snapshot, remoteRecords, identity = currentIdentity()) {
+    assertIdentity(identity);
+    const organizationId = identity.organizationId;
     const localKeys = new Set(recordRows(snapshot, organizationId, new Map(), new Map()).map((row) => `${row.record_type}:${row.legacy_id}`));
     const removable = (remoteRecords || []).filter((record) => {
       const module = RECORD_MODULES[record.record_type];
@@ -1182,23 +1396,27 @@
     if (removable.length) {
       const { error } = await App.client.from('business_records').delete().in('id', removable.map((record) => record.id));
       tableError(error, 'Suppression des données métier');
+      assertIdentity(identity);
     }
 
     if (App.can('employees', 'delete')) {
       const remoteEmployees = await App.client.from('employees').select('id,legacy_id').eq('organization_id', organizationId);
       tableError(remoteEmployees.error, 'Vérification des salariés supprimés');
+      assertIdentity(identity);
       const localEmployeeIds = new Set((snapshot.employees || []).map((employee) => String(employee.id)));
       const deleted = (remoteEmployees.data || []).filter((employee) => !localEmployeeIds.has(String(employee.legacy_id))).map((employee) => employee.id);
       if (deleted.length) {
         const { error } = await App.client.from('employees').delete().in('id', deleted);
         tableError(error, 'Suppression des salariés');
+        assertIdentity(identity);
       }
     }
 
   }
 
-  async function pushSnapshot(snapshot, queueEntry) {
-    const organizationId = App.context.organization_id;
+  async function pushSnapshot(snapshot, queueEntry, identity = currentIdentity()) {
+    assertIdentity(identity);
+    const organizationId = identity.organizationId;
     const sites = Array.isArray(snapshot.sites) ? snapshot.sites : [];
     const siteRows = sites.map((site) => ({
       organization_id: organizationId,
@@ -1219,6 +1437,7 @@
     tableError(visibleSites.error, 'Établissements');
     tableError(visibleEmployees.error, 'Salariés');
     tableError(currentRecords.error, 'État courant des données métier');
+    assertIdentity(identity);
     let storedSites = visibleSites.data || [];
     const preflightSiteMap = new Map(storedSites.map((site) => [String(site.legacy_id), site.id]));
     if (storedSites.length === 1 && !storedSites[0].legacy_id && sites.length === 1) {
@@ -1234,7 +1453,7 @@
     if (siteRows.length && (App.can('establishments', 'create') || App.can('establishments', 'update'))) {
       // The establishment created at workspace bootstrap has no legacy id yet.
       // Match it to the first local site instead of creating a duplicate.
-      if (storedSites.length === 1 && !storedSites[0].legacy_id && sites.length === 1 && App.context.primary_establishment_id === storedSites[0].id) {
+      if (storedSites.length === 1 && !storedSites[0].legacy_id && sites.length === 1 && identity.context.primary_establishment_id === storedSites[0].id) {
         const first = siteRows[0];
         const seeded = await App.client.from('establishments').update({ legacy_id: first.legacy_id, name: first.name, address: first.address, data: first.data }).eq('id', storedSites[0].id).select('id,legacy_id');
         tableError(seeded.error, 'Établissement initial');
@@ -1246,7 +1465,8 @@
       }
     }
     const siteMap = new Map(storedSites.map((site) => [String(site.legacy_id), site.id]));
-    const fallbackEstablishment = App.context.primary_establishment_id || storedSites[0]?.id || null;
+    assertIdentity(identity);
+    const fallbackEstablishment = identity.context.primary_establishment_id || storedSites[0]?.id || null;
     const employeeRows = (snapshot.employees || []).filter((employee) => employee && employee.id != null).map((employee) => {
       const { publicData } = splitEmployee(employee);
       const parts = splitName(employee);
@@ -1309,7 +1529,9 @@
       const result = await App.client.from('business_records').upsert(rows, { onConflict: 'organization_id,record_type,legacy_id' });
       tableError(result.error, 'Données métier');
     }
-    await pruneRemote(snapshot, currentRecords.data || []);
+    assertIdentity(identity);
+    await pruneRemote(snapshot, currentRecords.data || [], identity);
+    assertIdentity(identity);
     const revisions = await App.client.from('business_records')
       .select('record_type,legacy_id,revision')
       .eq('organization_id', organizationId).is('deleted_at', null);
@@ -1318,19 +1540,23 @@
   }
 
   async function restoreOrPull() {
-    if (!App.context || !App.cacheKey) return;
-    const pendingKey = `pending:${App.user.id}:${App.context.organization_id}`;
+    const identity = currentIdentity();
+    if (!identity) return;
+    await archiveAndClearLegacyStorage(identity);
+    assertIdentity(identity);
+    resetMemoryForIsolation();
+    const pendingKey = `pending:${identity.userId}:${identity.organizationId}`;
     const [cached, pending] = await Promise.all([
-      dbGet('kv', App.cacheKey),
-      dbGet('queue', pendingKey)
+      readScopedLocalRecord('kv', identity.cacheKey, identity),
+      readScopedLocalRecord('queue', pendingKey, identity)
     ]);
-    const legacyWasPresent = !cached && localStateHasContent();
+    assertIdentity(identity);
     const localSnapshot = pending?.state || cached?.state;
     if (localSnapshot) {
       App.applyingRemote = true;
       try {
         S = clone(localSnapshot);
-        App.currentEmployeeLegacyId = S.employees?.find((employee) => employee.cloudEmployeeId === App.context?.employee_id)?.id || null;
+        App.currentEmployeeLegacyId = S.employees?.find((employee) => employee.cloudEmployeeId === identity.context?.employee_id)?.id || null;
         if (typeof normalizeState === 'function') normalizeState();
         if (typeof renderAll === 'function') renderAll();
       }
@@ -1344,32 +1570,33 @@
       const synced = await syncNow('restore-pending');
       return { pending: !synced };
     }
-    const remote = await fetchRemoteState();
-    if (!remoteHasContent(remote) && !cached && App.context?.role_key === 'owner' && localStateHasContent()) {
-      existingImportForm();
-      return { needsImport: true };
-    }
-    // An existing cloud workspace is authoritative. A freshly created workspace
-    // keeps the local snapshot until the explicit first import is flushed.
-    if (shouldApplyRemoteState(remote, cached, pending)) applyRemoteState(remote);
-    await dbPut('kv', App.cacheKey, { state: snapshotState(), cachedRemote: true, savedAt: new Date().toISOString() });
-    if (remoteHasContent(remote) && legacyWasPresent) {
-      try { await archiveAndClearLegacyStorage(); }
-      catch (backupError) { console.warn('Sauvegarde legacy à finaliser', backupError); }
-    }
+    const remote = await fetchRemoteState(identity);
+    assertIdentity(identity);
+    // The cloud workspace, including an intentionally empty one, is always
+    // authoritative when no scoped offline mutation is pending.
+    if (shouldApplyRemoteState(remote, cached, pending)) applyRemoteState(remote, identity);
+    const snapshot = snapshotForIdentity(identity);
+    await dbPut('kv', identity.cacheKey, scopedCacheValue(identity, snapshot, {
+      cachedRemote: true,
+      savedAt: new Date().toISOString()
+    }));
+    assertIdentity(identity);
   }
 
   function captureLocalChange(reason) {
     if (!App.session || !App.context || App.applyingRemote) return;
+    const identity = currentIdentity();
+    if (!identity) return;
     App.localChangeRevision += 1;
-    const snapshot = snapshotState();
-    const pendingKey = `pending:${App.user.id}:${App.context.organization_id}`;
+    const snapshot = snapshotForIdentity(identity);
+    const pendingKey = `pending:${identity.userId}:${identity.organizationId}`;
     void dbPutStateAndQueue(
-      App.cacheKey,
-      { state: snapshot, cachedRemote: true, savedAt: new Date().toISOString() },
+      identity.cacheKey,
+      scopedCacheValue(identity, snapshot, { cachedRemote: true, savedAt: new Date().toISOString() }),
       pendingKey,
-      makeQueueEntry(reason || 'local-change', snapshot)
+      makeQueueEntry(reason || 'local-change', snapshot, identity)
     ).then(() => {
+      if (!identityIsCurrent(identity)) return;
       App.status(navigator.onLine ? 'Modifications à synchroniser' : 'Hors ligne · modifications en attente', 'pending');
       if (navigator.onLine) {
         scheduleQueuedSync();
@@ -1383,57 +1610,80 @@
   }
 
   async function syncNow(reason) {
-    if (!App.session || !App.context || App.syncing) return false;
+    if (!App.session || !App.context || App.syncing || App.switchingContext) return false;
     if (!navigator.onLine) { App.status('Hors ligne · modifications en attente', 'pending'); return false; }
-    App.syncing = true;
+    const identity = currentIdentity();
+    if (!identity) return false;
+    const syncOperation = { identity, reason };
+    App.syncing = syncOperation;
     App.status('Vérification des droits…', 'pending');
-    const pendingKey = `pending:${App.user.id}:${App.context.organization_id}`;
+    const pendingKey = `pending:${identity.userId}:${identity.organizationId}`;
     const revisionAtStart = App.localChangeRevision;
+    let lastPendingSnapshot = null;
     try {
-      const priorOrganization = App.context.organization_id;
       await refreshContext();
-      if (!App.context || App.context.organization_id !== priorOrganization) throw new Error('Vos accès ont été retirés ou votre périmètre a changé.');
+      assertIdentity(identity);
       let passes = 0;
       while (passes < 8) {
-        const pending = await dbGet('queue', pendingKey);
+        const pending = await readScopedLocalRecord('queue', pendingKey, identity);
         if (!pending?.state) break;
+        lastPendingSnapshot = clone(pending.state);
         App.status('Synchronisation en cours…', 'pending');
-        const pushedRevisions = (await pushSnapshot(pending.state, pending)) || Object.fromEntries(App.remoteRecordRevisions || []);
+        const pushedRevisions = (await pushSnapshot(pending.state, pending, identity)) || Object.fromEntries(App.remoteRecordRevisions || []);
+        assertIdentity(identity);
         const pushedGeneration = queueGeneration(pending);
         const removed = await dbDeleteIfUnchanged('queue', pendingKey, queueGeneration(pending));
+        assertIdentity(identity);
         if (!removed && typeof dbRebaseQueueIfChanged === 'function') {
-          await dbRebaseQueueIfChanged('queue', pendingKey, pushedGeneration, pushedRevisions);
+          await dbRebaseQueueIfChanged('queue', pendingKey, pushedGeneration, pushedRevisions, identity);
+          assertIdentity(identity);
         }
         App.remoteRecordRevisions = new Map(Object.entries(pushedRevisions));
         passes += 1;
         if (removed) break;
       }
-      let remaining = await dbGet('queue', pendingKey);
+      let remaining = await readScopedLocalRecord('queue', pendingKey, identity);
       if (remaining?.state || App.localChangeRevision !== revisionAtStart) {
         scheduleQueuedSync();
         App.status('Modifications à synchroniser', 'pending');
         return false;
       }
-      const remote = await fetchRemoteState();
-      remaining = await dbGet('queue', pendingKey);
+      const remote = await fetchRemoteState(identity);
+      remaining = await readScopedLocalRecord('queue', pendingKey, identity);
       if (remaining?.state || App.localChangeRevision !== revisionAtStart) {
         scheduleQueuedSync();
         App.status('Modifications à synchroniser', 'pending');
         return false;
       }
-      applyRemoteState(remote);
-      await dbPut('kv', App.cacheKey, { state: snapshotState(), cachedRemote: true, savedAt: new Date().toISOString(), reason });
+      applyRemoteState(remote, identity);
+      const snapshot = snapshotForIdentity(identity);
+      await dbPut('kv', identity.cacheKey, scopedCacheValue(identity, snapshot, {
+        cachedRemote: true,
+        savedAt: new Date().toISOString(),
+        reason
+      }));
+      assertIdentity(identity);
       App.lastError = null;
       App.status('Synchronisé', 'ok');
       return true;
     } catch (error) {
+      if (!identityIsCurrent(identity) || error?.name === 'StaleIdentityError') {
+        // A permission refresh may replace the active context (for example when
+        // access to the current store is revoked). Never leave the old store's
+        // in-memory state displayed under the replacement context.
+        if (String(App.user?.id || '') === identity.userId) {
+          resetMemoryForIsolation();
+          await logout();
+        }
+        return false;
+      }
       App.lastError = error;
       console.error('Synchronisation PlanniPro', error);
       if (error?.name === 'SyncConflictError') {
         App.syncConflicts = error.conflicts;
         App.status('Conflit de synchronisation', 'error');
-        await dbPut('backups', `conflict:${App.user.id}:${App.context.organization_id}:${Date.now()}`, {
-          state: snapshotState(), conflicts: error.conflicts, savedAt: new Date().toISOString()
+        await dbPut('backups', `conflict:${identity.userId}:${identity.organizationId}:${Date.now()}`, {
+          state: lastPendingSnapshot || snapshotForIdentity(identity), conflicts: error.conflicts, savedAt: new Date().toISOString()
         }).catch(() => {});
         safeToast('Une modification plus récente existe sur un autre appareil. Vos changements restent sauvegardés localement et ne seront pas écrasés.', 'err');
       } else App.status('Synchronisation en attente', 'error');
@@ -1445,7 +1695,7 @@
       }
       return false;
     } finally {
-      App.syncing = false;
+      if (App.syncing === syncOperation) App.syncing = false;
     }
   }
 
