@@ -62,8 +62,9 @@ async function rpc(name, token, body = {}) {
 }
 
 async function json(response, label) {
-  assert.ok(response.ok, `${label}: HTTP ${response.status} ${await response.text()}`);
-  return response.json();
+  const payload = await response.text();
+  assert.ok(response.ok, `${label}: HTTP ${response.status} ${payload}`);
+  return payload ? JSON.parse(payload) : null;
 }
 
 async function assertMutationDenied(response, label) {
