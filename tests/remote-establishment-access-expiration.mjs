@@ -309,8 +309,15 @@ try {
   });
   assert.equal(businessRpc.ok, false, 'RPC Planning encore utilisable sur le magasin expiré');
 
-  const storage = await fetch(storageUrl, {
-    headers: { apikey: key, Authorization: `Bearer ${sessions.ADMIN.access_token}` }
+  const expiredStorageUrl = new URL(storageUrl);
+  expiredStorageUrl.searchParams.set('access-check', crypto.randomUUID());
+  const storage = await fetch(expiredStorageUrl, {
+    cache: 'no-store',
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${sessions.ADMIN.access_token}`,
+      'Cache-Control': 'no-cache'
+    }
   });
   assert.equal(storage.ok, false, 'Storage reste lisible après expiration');
   await storage.body?.cancel();
