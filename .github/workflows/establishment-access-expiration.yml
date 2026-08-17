@@ -1,0 +1,52 @@
+name: Recette expiration accès magasin
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: establishment-access-expiration-production
+  cancel-in-progress: false
+
+jobs:
+  end-to-end-store-access:
+    name: Cinq JWT, RLS, Storage et Realtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PLANNIPRO_TEST_ACCESS_ORGANIZATION_ID: ${{ secrets.PLANNIPRO_TEST_ACCESS_ORGANIZATION_ID }}
+      PLANNIPRO_TEST_ACCESS_ESTABLISHMENT_ID: ${{ secrets.PLANNIPRO_TEST_ACCESS_ESTABLISHMENT_ID }}
+      PLANNIPRO_TEST_ACCESS_OTHER_ESTABLISHMENT_ID: ${{ secrets.PLANNIPRO_TEST_ACCESS_OTHER_ESTABLISHMENT_ID }}
+      PLANNIPRO_TEST_ACCESS_OTHER_ORGANIZATION_ID: ${{ secrets.PLANNIPRO_TEST_ACCESS_OTHER_ORGANIZATION_ID }}
+      PLANNIPRO_TEST_ACCESS_OTHER_ORGANIZATION_ESTABLISHMENT_ID: ${{ secrets.PLANNIPRO_TEST_ACCESS_OTHER_ORGANIZATION_ESTABLISHMENT_ID }}
+      PLANNIPRO_TEST_ACCESS_STORAGE_BUCKET: plannipro-documents
+      PLANNIPRO_TEST_ACCESS_STORAGE_PATH: ${{ secrets.PLANNIPRO_TEST_ACCESS_STORAGE_PATH }}
+      PLANNIPRO_TEST_ACCESS_ADMIN_EMAIL: ${{ secrets.PLANNIPRO_TEST_ACCESS_ADMIN_EMAIL }}
+      PLANNIPRO_TEST_ACCESS_ADMIN_PASSWORD: ${{ secrets.PLANNIPRO_TEST_ACCESS_ADMIN_PASSWORD }}
+      PLANNIPRO_TEST_ACCESS_MANAGER_EMAIL: ${{ secrets.PLANNIPRO_TEST_ACCESS_MANAGER_EMAIL }}
+      PLANNIPRO_TEST_ACCESS_MANAGER_PASSWORD: ${{ secrets.PLANNIPRO_TEST_ACCESS_MANAGER_PASSWORD }}
+      PLANNIPRO_TEST_ACCESS_SUPERVISOR_EMAIL: ${{ secrets.PLANNIPRO_TEST_ACCESS_SUPERVISOR_EMAIL }}
+      PLANNIPRO_TEST_ACCESS_SUPERVISOR_PASSWORD: ${{ secrets.PLANNIPRO_TEST_ACCESS_SUPERVISOR_PASSWORD }}
+      PLANNIPRO_TEST_ACCESS_EMPLOYEE_EMAIL: ${{ secrets.PLANNIPRO_TEST_ACCESS_EMPLOYEE_EMAIL }}
+      PLANNIPRO_TEST_ACCESS_EMPLOYEE_PASSWORD: ${{ secrets.PLANNIPRO_TEST_ACCESS_EMPLOYEE_PASSWORD }}
+      PLANNIPRO_TEST_ACCESS_ISOLATED_EMAIL: ${{ secrets.PLANNIPRO_TEST_ACCESS_ISOLATED_EMAIL }}
+      PLANNIPRO_TEST_ACCESS_ISOLATED_PASSWORD: ${{ secrets.PLANNIPRO_TEST_ACCESS_ISOLATED_PASSWORD }}
+    steps:
+      - name: Récupérer les sources
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Vérifier toutes les suites statiques
+        run: npm run test:static
+
+      - name: Vérifier les accès anonymes
+        run: npm run test:remote:anon
+
+      - name: Vérifier l’expiration réelle des accès magasin
+        run: npm run test:remote:store-access
