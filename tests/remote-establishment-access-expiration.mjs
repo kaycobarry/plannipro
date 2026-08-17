@@ -137,9 +137,13 @@ async function realtimeEstablishment(token, suffix) {
     }, { once: true });
     socket.addEventListener('error', () => reject(new Error('Erreur WebSocket Realtime')), { once: true });
   });
-  await waitFor(() => joinError || messages.some((message) =>
-    message.event === 'phx_reply' && message.ref === '1' && message.payload?.status === 'ok'
-  ));
+  try {
+    await waitFor(() => joinError || messages.some((message) =>
+      message.event === 'phx_reply' && message.ref === '1' && message.payload?.status === 'ok'
+    ), 30000);
+  } catch (error) {
+    throw new Error(`${error.message}; messages Realtime: ${JSON.stringify(messages.slice(-5))}`);
+  }
   if (joinError) throw joinError;
   return { socket, messages };
 }
