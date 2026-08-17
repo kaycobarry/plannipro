@@ -5,6 +5,7 @@ import vm from 'node:vm';
 const root = new URL('..', import.meta.url);
 const read = (file) => fs.readFileSync(new URL(file, root), 'utf8').replace(/\r\n/g, '\n');
 const sql = read('supabase/establishment-access-expiration.sql');
+const storageFix = read('supabase/establishment-access-expiration-storage-fix.sql');
 const cloud = read('plannipro-cloud.js');
 const index = read('index.html');
 const sw = read('sw.js');
@@ -63,6 +64,13 @@ assert.match(sql, /v_old := to_jsonb\(old\)/,
 assert.equal(/old\.used_at|old\.expires_at/.test(sql), false,
   'generic trigger fields must be read through JSON after the table check');
 assert.match(sql, /alter publication supabase_realtime add table public\.establishments/);
+assert.match(storageFix, /^--[\s\S]*\nbegin;/i);
+assert.match(storageFix, /commit;\s*$/i);
+assert.match(storageFix, /storage_object_establishment_access_allowed/);
+assert.match(storageFix, /create or replace function plannipro_private\.storage_object_establishment_access_allowed/);
+assert.match(storageFix, /create policy plannipro_documents_establishment_access_gate[\s\S]*as restrictive[\s\S]*for all/i);
+assert.match(storageFix, /return public\.establishment_business_access_allowed/);
+assert.match(storageFix, /bucket_id <> 'plannipro-documents'[\s\S]*plannipro_private\.storage_object_establishment_access_allowed\(name\)/i);
 
 // A4 — only an owner or an Administrator assigned to the target store can administer access.
 assert.match(sql, /r\.key='owner'[\s\S]*r\.key='administrator' and mer\.establishment_id=p_establishment_id/);
@@ -140,6 +148,6 @@ assert.match(cloud, /removeChannel/);
 assert.match(sw, /plannipro-shell-v37/);
 
 // A9 — no privileged key is introduced into browser or migration sources.
-assert.equal(/service[_-]?role/i.test(`${cloud}\n${index}\n${sql}`), false);
+assert.equal(/service[_-]?role/i.test(`${cloud}\n${index}\n${sql}\n${storageFix}`), false);
 
 console.log('Expiration établissement: SQL, RLS/RPC, hors-ligne, DST et interface OK');
