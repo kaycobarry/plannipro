@@ -209,11 +209,13 @@ const seedStorageUpload = await fetch(`${url}/storage/v1/object/${encodeURICompo
   method: 'POST',
   headers: {
     apikey: key, Authorization: `Bearer ${sessions.ADMIN.access_token}`,
-    'Content-Type': 'text/plain', 'x-upsert': 'false'
+    'Content-Type': 'text/plain', 'x-upsert': 'true'
   },
   body: 'PlanniPro store access registered probe'
 });
-assert.ok(seedStorageUpload.ok, `téléversement de l’objet Storage de recette refusé (${seedStorageUpload.status})`);
+const seedStorageUploadBody = await seedStorageUpload.text();
+assert.ok(seedStorageUpload.ok,
+  `téléversement de l’objet Storage de recette refusé (${seedStorageUpload.status}: ${seedStorageUploadBody})`);
 const storageBefore = await fetch(storageUrl, {
   headers: { apikey: key, Authorization: `Bearer ${sessions.ADMIN.access_token}` }
 });
