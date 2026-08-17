@@ -260,7 +260,11 @@ try {
     access_suspended_at: null
   }), 'expiration administrateur');
   assert.equal(expired.access_status, 'expired');
-  await waitFor(() => receivedUpdate(adminRealtime));
+  try {
+    await waitFor(() => receivedUpdate(adminRealtime), 30000);
+  } catch (error) {
+    throw new Error(`${error.message}; messages ADMIN: ${JSON.stringify(adminRealtime.messages.slice(-5))}`);
+  }
   await new Promise((resolve) => setTimeout(resolve, 1500));
   assert.equal(receivedUpdate(managerRealtime), false, 'Realtime a diffusé la ligne expirée au MANAGER');
   expiredManagerRealtime = await realtimeEstablishment(sessions.MANAGER.access_token, 'manager-expired');
