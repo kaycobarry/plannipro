@@ -1581,6 +1581,14 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <div class="fg"><label class="fl">Nom *</label><input type="text" class="fi" id="siteNm" placeholder="ex: Magasin Centre-Ville"></div>
       <div class="fg"><label class="fl">Adresse</label><input type="text" class="fi" id="siteAddr"></div>
       <div class="fg"><label class="fl">Icone (emoji)</label><input type="text" class="fi" id="siteIco" value="&#127978;" maxlength="2"></div>
+      <div class="fg"><label class="fl"><input type="checkbox" id="siteAccessUnlimited" checked onchange="toggleSiteAccessFields()"> Accès illimité</label></div>
+      <div id="siteAccessDates" style="display:none">
+        <div class="frow">
+          <div class="fg"><label class="fl">Début (Europe/Paris)</label><input type="datetime-local" class="fi" id="siteAccessStarts"></div>
+          <div class="fg"><label class="fl">Expiration (Europe/Paris)</label><input type="datetime-local" class="fi" id="siteAccessExpires"></div>
+        </div>
+        <div class="fg"><label class="fl">Durée rapide</label><select class="fs" id="siteAccessDuration" onchange="applySiteAccessDuration(this.value)"><option value="">Personnalisée</option><option value="7">7 jours</option><option value="30">30 jours</option><option value="90">90 jours</option></select></div>
+      </div>
       <div class="m-foot"><button class="btn btn-outline" onclick="cm('ovl-site')">Annuler</button><button class="btn btn-primary" onclick="saveSite()">Enregistrer</button></div>
     </div>
   </div>
@@ -3270,7 +3278,12 @@ function renderSim() {
 function renderSettings() {
   const sl=document.getElementById('siteList'); sl.innerHTML='';
   S.sites.forEach(site=>{
-    sl.innerHTML+=`<div class="site-item"><div class="site-ico">${site.icon}</div><div class="site-inf"><div class="site-nm">${site.name}</div><div class="site-dt">${site.address||''}</div></div><div style="display:flex;gap:5px"><button class="btn btn-outline btn-sm" onclick="openSiteModal('${site.id}')">Modifier</button><button class="btn btn-danger btn-sm" onclick="deleteSite('${site.id}')">Supprimer</button></div></div>`;
+    const access=window.PlanniProCloud?.storeAccessInfo?.(site)||{access_status:site.accessStatus||'active'};
+    const statusLabel=window.PlanniProCloud?.accessStatusLabel?.(access.access_status)||'Actif';
+    const deadline=access.access_expires_at?` · échéance ${window.PlanniProCloud?.formatParisDate?.(access.access_expires_at)||access.access_expires_at}`:' · sans échéance';
+    const alert=access.alert_days?` · alerte J-${access.alert_days}`:'';
+    const accessButton=access.can_administer_access&&site.cloudEstablishmentId?`<button class="btn btn-outline btn-sm" onclick="PlanniProCloud.openStoreAccessDialog(PlanniProCloud.storeAccessInfo(S.sites.find(s=>s.id==='${site.id}')))">Accès</button>`:'';
+    sl.innerHTML+=`<div class="site-item"><div class="site-ico">${site.icon}</div><div class="site-inf"><div class="site-nm">${site.name} <span class="pp-store-status ${access.access_status}">${statusLabel}</span></div><div class="site-dt">${site.address||''}${deadline}${alert}</div></div><div style="display:flex;gap:5px;flex-wrap:wrap">${accessButton}<button class="btn btn-outline btn-sm" onclick="openSiteModal('${site.id}')">Modifier</button><button class="btn btn-danger btn-sm" onclick="deleteSite('${site.id}')">Supprimer</button></div></div>`;
   });
   ['legalAlerts','overtimeAlert'].forEach(k=>{
     const t=document.getElementById('tog-'+k);
@@ -4224,15 +4237,47 @@ function openSiteModal(id) {
   document.getElementById('siteNm').value=site?site.name:'';
   document.getElementById('siteAddr').value=site?site.address||'':'';
   document.getElementById('siteIco').value=site?site.icon:'🏪';
+  const cloud=window.PlanniProCloud;
+  const serverNow=cloud?.context?.access_server_now||new Date().toISOString();
+  const starts=site?.accessStartsAt||serverNow;
+  const unlimited=site?site.accessExpiresAt==null:true;
+  document.getElementById('siteAccessUnlimited').checked=unlimited;
+  document.getElementById('siteAccessStarts').value=cloud?.utcToParisInput?.(starts)||new Date(starts).toISOString().slice(0,16);
+  document.getElementById('siteAccessExpires').value=site?.accessExpiresAt
+    ? (cloud?.utcToParisInput?.(site.accessExpiresAt)||new Date(site.accessExpiresAt).toISOString().slice(0,16))
+    : (cloud?.addParisDays?.(document.getElementById('siteAccessStarts').value,30)||'');
+  document.getElementById('siteAccessDuration').value='';
+  toggleSiteAccessFields();
   om('ovl-site');
+}
+function toggleSiteAccessFields(){
+  const unlimited=document.getElementById('siteAccessUnlimited').checked;
+  document.getElementById('siteAccessDates').style.display=unlimited?'none':'block';
+  document.getElementById('siteAccessExpires').disabled=unlimited;
+}
+function applySiteAccessDuration(days){
+  if(!days)return;
+  const start=document.getElementById('siteAccessStarts').value;
+  if(!start)return;
+  document.getElementById('siteAccessUnlimited').checked=false;
+  toggleSiteAccessFields();
+  document.getElementById('siteAccessExpires').value=window.PlanniProCloud?.addParisDays?.(start,+days)||'';
 }
 function saveSite() {
   const name=document.getElementById('siteNm').value.trim();
   if(!name){toast('Nom requis','err');return;}
   const eid=document.getElementById('editSiteId').value;
-  const data={name,address:document.getElementById('siteAddr').value.trim(),icon:document.getElementById('siteIco').value.trim()||'🏪'};
+  const unlimited=document.getElementById('siteAccessUnlimited').checked;
+  let accessStartsAt,accessExpiresAt=null;
+  try{
+    accessStartsAt=window.PlanniProCloud?.parisInputToUtc?.(document.getElementById('siteAccessStarts').value)||new Date(document.getElementById('siteAccessStarts').value).toISOString();
+    if(!unlimited)accessExpiresAt=window.PlanniProCloud?.parisInputToUtc?.(document.getElementById('siteAccessExpires').value)||new Date(document.getElementById('siteAccessExpires').value).toISOString();
+  }catch(error){toast(error.message||'Dates d’accès invalides','err');return;}
+  if(accessExpiresAt&&Date.parse(accessExpiresAt)<=Date.parse(accessStartsAt)){toast('L’expiration doit être postérieure au début','err');return;}
+  const data={name,address:document.getElementById('siteAddr').value.trim(),icon:document.getElementById('siteIco').value.trim()||'🏪',accessUnlimited:unlimited,accessStartsAt,accessExpiresAt};
   if(eid){const s=S.sites.find(x=>x.id===eid);if(s)Object.assign(s,data);}
-  else S.sites.push({id:'site'+Date.now(),...data});
+  else S.sites.push({id:'site'+Date.now(),...data,accessDirty:true});
+  if(eid){const s=S.sites.find(x=>x.id===eid);if(s)s.accessDirty=true;}
   save();cm('ovl-site');renderSettings();toast('Site enregistré','ok');
 }
 function deleteSite(id){if(!confirm('Supprimer ce site ?'))return;S.sites=S.sites.filter(s=>s.id!==id);save();renderSettings();toast('Site supprimé','info');}

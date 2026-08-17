@@ -5,12 +5,13 @@
   "description": "Planning, RH et pointeuse synchronisés avec Supabase",
   "scripts": {
     "test": "node tests/run-all.mjs",
-    "test:syntax": "node --check plannipro-cloud.js && node --check plannipro-publications.js && node --check plannipro-vault.js && node --check pointeuse.js && node --check sw.js && node --check tests/remote-tenant-isolation.mjs",
+    "test:syntax": "node --check plannipro-cloud.js && node --check plannipro-publications.js && node --check plannipro-vault.js && node --check pointeuse.js && node --check sw.js && node --check tests/remote-tenant-isolation.mjs && node --check tests/remote-establishment-access-expiration.mjs",
     "test:static": "npm run test:syntax && node tests/run-all.mjs",
     "test:remote:anon": "node tests/remote-anon.mjs && node tests/remote-edge-security.mjs",
     "test:remote:public": "node tests/remote-public-smoke.mjs",
     "test:remote:rbac": "node tests/remote-rbac.mjs",
-    "test:remote:isolation": "node tests/remote-tenant-isolation.mjs"
+    "test:remote:isolation": "node tests/remote-tenant-isolation.mjs",
+    "test:remote:store-access": "node tests/remote-establishment-access-expiration.mjs"
   },
   "engines": {
     "node": ">=22"

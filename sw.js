@@ -1,4 +1,4 @@
-const CACHE = "plannipro-shell-v36";
+const CACHE = "plannipro-shell-v37";
 const APP_SHELL = [
   "./",
   "./index.html",

@@ -43,6 +43,8 @@
     setting: 'settings', report: 'reports', notification: 'dashboard'
   };
   const TIME_CLOCK_LEGACY_PREFIX = 'time-clock:';
+  const STORE_ACCESS_ERROR = 'STORE_ACCESS_EXPIRED';
+  const STORE_OPEN_STATES = new Set(['active', 'expiring_soon']);
   const DEPRECATED_PERMISSIONS = new Set(['pointage.manage_settings', 'users.manage_users']);
   const STANDARD_BUSINESS_ROLE_KEYS = new Set(['administrator', 'manager', 'supervisor', 'employee']);
   const ADVANCED_EXCEPTION_PERMISSIONS = Object.freeze([
@@ -91,6 +93,10 @@
     identityEpoch: 0,
     privateModeActivated: true,
     switchingContext: false,
+    storeAccessBlocked: null,
+    storeAccessTimer: null,
+    accessServerNowMs: null,
+    accessServerMonotonic: null,
     // The authenticated application never writes business data to the former
     // origin-wide cache. Scoped IndexedDB keys below are the only local source.
     usePrivateCache: () => App.privateModeActivated,
@@ -147,6 +153,15 @@
     }
   }
 
+  class StoreAccessError extends Error {
+    constructor(state, message = STORE_ACCESS_ERROR) {
+      super(message);
+      this.name = 'StoreAccessError';
+      this.code = STORE_ACCESS_ERROR;
+      this.state = state || null;
+    }
+  }
+
   function currentIdentity() {
     if (!App.user?.id || !App.context?.organization_id || !App.cacheKey) return null;
     return Object.freeze({
@@ -174,6 +189,8 @@
     App.identityEpoch += 1;
     clearTimeout(App.syncTimer);
     App.syncTimer = null;
+    clearTimeout(App.storeAccessTimer);
+    App.storeAccessTimer = null;
   }
 
   function snapshotForIdentity(identity) {
@@ -260,6 +277,8 @@
       cacheKey: identity.cacheKey,
       baseRecordRevisionsCaptured: true,
       baseRecordRevisions: Object.fromEntries(App.remoteRecordRevisions || []),
+      establishmentId: identity.context?.primary_establishment_id || null,
+      accessVersion: identity.context?.access_version == null ? null : Number(identity.context.access_version),
       queuedAt: new Date().toISOString()
     };
   }
@@ -387,7 +406,7 @@
     style.id = 'pp-cloud-style';
     style.textContent = `
       #pp-auth-gate{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:22px;background:radial-gradient(circle at 10% 10%,#5065e8 0,transparent 31%),linear-gradient(135deg,#101936 0%,#1b2859 54%,#0b1023 100%);color:#14203b}
-      #pp-auth-gate[hidden]{display:none!important}.pp-auth-card{width:min(460px,100%);max-height:calc(100dvh - 44px);overflow:auto;border-radius:24px;background:#fff;box-shadow:0 26px 75px rgba(2,7,27,.42);padding:28px}.pp-auth-brand{display:flex;align-items:center;gap:10px;font:800 23px/1 system-ui,sans-serif;color:#17224a;margin-bottom:7px}.pp-auth-brand b{color:#5165e8}.pp-auth-kicker{font-size:13px;color:#65708a;line-height:1.55;margin:0 0 22px}.pp-auth-form{display:grid;gap:13px}.pp-auth-form label{display:grid;gap:6px;font-size:12px;font-weight:760;color:#34415e}.pp-auth-form input,.pp-auth-form select{border:1px solid #d9dfec;border-radius:11px;padding:11px 12px;font:inherit;color:#14203b;background:#fff}.pp-auth-form input:focus,.pp-auth-form select:focus{outline:3px solid rgba(79,99,231,.18);border-color:#4f63e7}.pp-auth-submit{border:0;border-radius:11px;padding:12px 14px;background:#4f63e7;color:#fff;font:750 14px/1 system-ui,sans-serif;cursor:pointer}.pp-auth-submit:disabled{opacity:.6;cursor:wait}.pp-auth-links{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:18px}.pp-auth-link{border:0;padding:0;background:transparent;color:#4359df;cursor:pointer;font:650 12px/1.3 system-ui,sans-serif}.pp-auth-note{margin:0 0 15px;border-radius:10px;padding:10px 12px;background:#eef2ff;color:#2e3a82;font-size:12px;line-height:1.45}.pp-auth-note.err{background:#fff0f1;color:#a62937}.pp-account{position:relative;flex:0 0 auto;display:flex;align-items:center;gap:6px}.pp-account-button{display:flex;align-items:center;gap:8px;border:1px solid var(--bd1,#dfe4ef);border-radius:12px;background:#fff;color:var(--tx1,#1f2940);padding:6px 8px;max-width:220px;cursor:pointer}.pp-logout-button{border:1px solid #f0c9cf;border-radius:10px;background:#fff0f1;color:#a72a3c;padding:9px 10px;font:750 11px/1 system-ui,sans-serif;cursor:pointer}.pp-account-avatar{width:29px;height:29px;border-radius:50%;display:grid;place-items:center;background:#4f63e7;color:#fff;font-size:11px;font-weight:800}.pp-account-lines{min-width:0;text-align:left}.pp-account-name,.pp-account-role{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pp-account-name{font:750 11px/1.1 system-ui,sans-serif}.pp-account-role{font:600 10px/1.25 system-ui,sans-serif;color:#6b7590;margin-top:2px}.pp-account-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:900;width:min(330px,calc(100vw - 24px));padding:12px;border:1px solid #e0e5ef;border-radius:14px;background:#fff;box-shadow:0 17px 35px rgba(16,26,58,.18);display:none}.pp-account.open .pp-account-menu{display:block}.pp-account-menu p{margin:0 0 8px;font-size:11px;color:#6b7590}.pp-account-menu select{width:100%;padding:8px;border:1px solid #dfe4ef;border-radius:8px;background:#fff}.pp-account-actions{display:grid;gap:6px;margin-top:11px}.pp-account-actions button{border:0;border-radius:8px;padding:8px 9px;text-align:left;background:#f4f6fa;color:#26314d;font:650 12px system-ui,sans-serif;cursor:pointer}.pp-account-actions button.danger{background:#fff0f1;color:#b1283a}.pp-action-disabled{opacity:.48!important;cursor:not-allowed!important}.pp-sync-status{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#66718c}.pp-sync-status:before{content:'';width:7px;height:7px;border-radius:50%;background:#95a1bb}.pp-sync-status[data-kind="ok"]:before{background:#19a974}.pp-sync-status[data-kind="pending"]:before{background:#e69f19}.pp-sync-status[data-kind="error"]:before{background:#e34d5c}.pp-users-wrap{padding:20px;overflow:auto;min-height:0}.pp-users-head{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;margin-bottom:18px}.pp-users-head h2{margin:0;font-size:22px}.pp-users-head p{margin:5px 0 0;color:#69738c;font-size:12px}.pp-users-card{border:1px solid #e0e5ef;border-radius:14px;background:#fff;overflow:hidden;margin-bottom:16px}.pp-users-card h3{margin:0;padding:14px 16px;border-bottom:1px solid #edf0f5;font-size:14px}.pp-users-table{width:100%;border-collapse:collapse;font-size:12px}.pp-users-table th,.pp-users-table td{padding:11px 14px;text-align:left;border-bottom:1px solid #edf0f5;vertical-align:middle}.pp-users-table th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#78829a}.pp-users-table td:last-child{text-align:right}.pp-users-table button,.pp-users-card .btn{font:650 11px system-ui,sans-serif}.pp-users-status{display:inline-flex;padding:4px 7px;border-radius:99px;background:#edf2ff;color:#3a50bf;font-size:10px;font-weight:800}.pp-users-status.suspended,.pp-users-status.disabled{background:#fff0f1;color:#bf3143}.pp-users-status.invited{background:#fff8e7;color:#9b6908}.pp-dialog-backdrop{position:fixed;inset:0;z-index:10020;background:rgba(12,18,42,.46);display:grid;place-items:center;padding:18px}.pp-dialog{width:min(780px,100%);max-height:calc(100dvh - 36px);overflow:auto;border-radius:18px;background:#fff;padding:20px;box-shadow:0 20px 60px rgba(12,18,42,.28)}.pp-dialog h2{margin:0 0 6px;font-size:19px}.pp-dialog p{font-size:12px;color:#68738d;line-height:1.5}.pp-dialog-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin:16px 0}.pp-dialog-grid label{display:grid;gap:5px;font-size:11px;font-weight:750;color:#43506d}.pp-dialog-grid input,.pp-dialog-grid select{padding:9px;border:1px solid #dce2ee;border-radius:8px}.pp-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.pp-permission-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.pp-permission-grid label{display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #edf0f5;border-radius:8px;font-size:11px;font-weight:600}.pp-permission-grid input{accent-color:#4f63e7}@media(max-width:700px){.pp-account-lines{display:none}.pp-account-button{padding:5px}.pp-logout-button{padding:9px 8px}.pp-users-wrap{padding:12px}.pp-users-head{display:block}.pp-users-head .btn{margin-top:10px}.pp-users-table th:nth-child(3),.pp-users-table td:nth-child(3),.pp-users-table th:nth-child(4),.pp-users-table td:nth-child(4){display:none}.pp-dialog-grid,.pp-permission-grid{grid-template-columns:1fr}.pp-auth-card{padding:22px}}
+      #pp-auth-gate[hidden]{display:none!important}.pp-auth-card{width:min(460px,100%);max-height:calc(100dvh - 44px);overflow:auto;border-radius:24px;background:#fff;box-shadow:0 26px 75px rgba(2,7,27,.42);padding:28px}.pp-auth-brand{display:flex;align-items:center;gap:10px;font:800 23px/1 system-ui,sans-serif;color:#17224a;margin-bottom:7px}.pp-auth-brand b{color:#5165e8}.pp-auth-kicker{font-size:13px;color:#65708a;line-height:1.55;margin:0 0 22px}.pp-auth-form{display:grid;gap:13px}.pp-auth-form label{display:grid;gap:6px;font-size:12px;font-weight:760;color:#34415e}.pp-auth-form input,.pp-auth-form select{border:1px solid #d9dfec;border-radius:11px;padding:11px 12px;font:inherit;color:#14203b;background:#fff}.pp-auth-form input:focus,.pp-auth-form select:focus{outline:3px solid rgba(79,99,231,.18);border-color:#4f63e7}.pp-auth-submit{border:0;border-radius:11px;padding:12px 14px;background:#4f63e7;color:#fff;font:750 14px/1 system-ui,sans-serif;cursor:pointer}.pp-auth-submit:disabled{opacity:.6;cursor:wait}.pp-auth-links{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:18px}.pp-auth-link{border:0;padding:0;background:transparent;color:#4359df;cursor:pointer;font:650 12px/1.3 system-ui,sans-serif}.pp-auth-note{margin:0 0 15px;border-radius:10px;padding:10px 12px;background:#eef2ff;color:#2e3a82;font-size:12px;line-height:1.45}.pp-auth-note.err{background:#fff0f1;color:#a62937}.pp-access-card{width:min(560px,100%)}.pp-access-state{display:inline-flex;padding:5px 9px;border-radius:999px;background:#fff0f1;color:#a62937;font:800 11px/1 system-ui,sans-serif}.pp-access-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:18px}.pp-access-actions button{border:0;border-radius:10px;padding:11px 13px;font:750 12px system-ui,sans-serif;cursor:pointer}.pp-access-actions .primary{background:#4f63e7;color:#fff}.pp-access-actions .secondary{background:#eef1f7;color:#34415e}.pp-store-status{display:inline-flex;padding:4px 8px;border-radius:999px;background:#edf7f1;color:#16734b;font-size:10px;font-weight:800}.pp-store-status.expiring_soon,.pp-store-status.scheduled{background:#fff8e7;color:#996607}.pp-store-status.expired,.pp-store-status.suspended{background:#fff0f1;color:#b1283a}.pp-account{position:relative;flex:0 0 auto;display:flex;align-items:center;gap:6px}.pp-account-button{display:flex;align-items:center;gap:8px;border:1px solid var(--bd1,#dfe4ef);border-radius:12px;background:#fff;color:var(--tx1,#1f2940);padding:6px 8px;max-width:220px;cursor:pointer}.pp-logout-button{border:1px solid #f0c9cf;border-radius:10px;background:#fff0f1;color:#a72a3c;padding:9px 10px;font:750 11px/1 system-ui,sans-serif;cursor:pointer}.pp-account-avatar{width:29px;height:29px;border-radius:50%;display:grid;place-items:center;background:#4f63e7;color:#fff;font-size:11px;font-weight:800}.pp-account-lines{min-width:0;text-align:left}.pp-account-name,.pp-account-role{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pp-account-name{font:750 11px/1.1 system-ui,sans-serif}.pp-account-role{font:600 10px/1.25 system-ui,sans-serif;color:#6b7590;margin-top:2px}.pp-account-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:900;width:min(330px,calc(100vw - 24px));padding:12px;border:1px solid #e0e5ef;border-radius:14px;background:#fff;box-shadow:0 17px 35px rgba(16,26,58,.18);display:none}.pp-account.open .pp-account-menu{display:block}.pp-account-menu p{margin:0 0 8px;font-size:11px;color:#6b7590}.pp-account-menu select{width:100%;padding:8px;border:1px solid #dfe4ef;border-radius:8px;background:#fff}.pp-account-actions{display:grid;gap:6px;margin-top:11px}.pp-account-actions button{border:0;border-radius:8px;padding:8px 9px;text-align:left;background:#f4f6fa;color:#26314d;font:650 12px system-ui,sans-serif;cursor:pointer}.pp-account-actions button.danger{background:#fff0f1;color:#b1283a}.pp-action-disabled{opacity:.48!important;cursor:not-allowed!important}.pp-sync-status{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#66718c}.pp-sync-status:before{content:'';width:7px;height:7px;border-radius:50%;background:#95a1bb}.pp-sync-status[data-kind="ok"]:before{background:#19a974}.pp-sync-status[data-kind="pending"]:before{background:#e69f19}.pp-sync-status[data-kind="error"]:before{background:#e34d5c}.pp-users-wrap{padding:20px;overflow:auto;min-height:0}.pp-users-head{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;margin-bottom:18px}.pp-users-head h2{margin:0;font-size:22px}.pp-users-head p{margin:5px 0 0;color:#69738c;font-size:12px}.pp-users-card{border:1px solid #e0e5ef;border-radius:14px;background:#fff;overflow:hidden;margin-bottom:16px}.pp-users-card h3{margin:0;padding:14px 16px;border-bottom:1px solid #edf0f5;font-size:14px}.pp-users-table{width:100%;border-collapse:collapse;font-size:12px}.pp-users-table th,.pp-users-table td{padding:11px 14px;text-align:left;border-bottom:1px solid #edf0f5;vertical-align:middle}.pp-users-table th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#78829a}.pp-users-table td:last-child{text-align:right}.pp-users-table button,.pp-users-card .btn{font:650 11px system-ui,sans-serif}.pp-users-status{display:inline-flex;padding:4px 7px;border-radius:99px;background:#edf2ff;color:#3a50bf;font-size:10px;font-weight:800}.pp-users-status.suspended,.pp-users-status.disabled{background:#fff0f1;color:#bf3143}.pp-users-status.invited{background:#fff8e7;color:#9b6908}.pp-dialog-backdrop{position:fixed;inset:0;z-index:10020;background:rgba(12,18,42,.46);display:grid;place-items:center;padding:18px}.pp-dialog{width:min(780px,100%);max-height:calc(100dvh - 36px);overflow:auto;border-radius:18px;background:#fff;padding:20px;box-shadow:0 20px 60px rgba(12,18,42,.28)}.pp-dialog h2{margin:0 0 6px;font-size:19px}.pp-dialog p{font-size:12px;color:#68738d;line-height:1.5}.pp-dialog-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin:16px 0}.pp-dialog-grid label{display:grid;gap:5px;font-size:11px;font-weight:750;color:#43506d}.pp-dialog-grid input,.pp-dialog-grid select{padding:9px;border:1px solid #dce2ee;border-radius:8px}.pp-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.pp-permission-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.pp-permission-grid label{display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #edf0f5;border-radius:8px;font-size:11px;font-weight:600}.pp-permission-grid input{accent-color:#4f63e7}@media(max-width:700px){.pp-account-lines{display:none}.pp-account-button{padding:5px}.pp-logout-button{padding:9px 8px}.pp-users-wrap{padding:12px}.pp-users-head{display:block}.pp-users-head .btn{margin-top:10px}.pp-users-table th:nth-child(3),.pp-users-table td:nth-child(3),.pp-users-table th:nth-child(4),.pp-users-table td:nth-child(4){display:none}.pp-dialog-grid,.pp-permission-grid{grid-template-columns:1fr}.pp-auth-card{padding:22px}}
     `;
     document.head.appendChild(style);
   }
@@ -413,6 +432,315 @@
     const node = document.getElementById('pp-auth-gate');
     if (node) node.hidden = true;
   }
+
+  function accessStateFromContext(context = App.context) {
+    if (!context?.primary_establishment_id) return null;
+    const assigned = (context.establishment_access || []).find((item) =>
+      String(item?.establishment_id || '') === String(context.primary_establishment_id)
+    );
+    return {
+      organization_id: context.organization_id,
+      establishment_id: context.primary_establishment_id,
+      establishment_name: assigned?.establishment_name || context.establishment_name || 'Établissement',
+      access_status: assigned?.access_status || context.access_status || 'active',
+      access_starts_at: assigned?.access_starts_at || context.access_starts_at || null,
+      access_expires_at: assigned?.access_expires_at || context.access_expires_at || null,
+      access_suspended_at: assigned?.access_suspended_at || context.access_suspended_at || null,
+      access_suspension_reason: assigned?.access_suspension_reason || context.access_suspension_reason || null,
+      access_version: assigned?.access_version ?? context.access_version ?? null,
+      alert_days: assigned?.alert_days ?? null,
+      server_now: context.access_server_now || null,
+      can_administer_access: Boolean(assigned?.can_administer_access ?? context.can_administer_access)
+    };
+  }
+
+  function storeAccessIsOpen(state) {
+    return Boolean(state && STORE_OPEN_STATES.has(state.access_status));
+  }
+
+  function accessStatusLabel(status) {
+    return ({ active: 'Actif', expiring_soon: 'Expire bientôt', scheduled: 'Programmé', expired: 'Expiré', suspended: 'Suspendu' })[status] || 'Indisponible';
+  }
+
+  function formatParisDate(value) {
+    if (!value) return 'sans échéance';
+    try {
+      return new Intl.DateTimeFormat('fr-FR', {
+        dateStyle: 'long', timeStyle: 'short', timeZone: 'Europe/Paris'
+      }).format(new Date(value));
+    } catch (_) { return String(value); }
+  }
+
+  function utcToParisInput(value) {
+    if (!value) return '';
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    }).formatToParts(new Date(value)).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+  }
+
+  function parisInputToUtc(value) {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+    if (!match) throw new Error('Date et heure invalides.');
+    const expected = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}`;
+    const target = Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5]);
+    let instant = target;
+    for (let pass = 0; pass < 4; pass += 1) {
+      const shown = utcToParisInput(new Date(instant).toISOString());
+      const displayed = Date.UTC(+shown.slice(0, 4), +shown.slice(5, 7) - 1, +shown.slice(8, 10), +shown.slice(11, 13), +shown.slice(14, 16));
+      instant += target - displayed;
+    }
+    const iso = new Date(instant).toISOString();
+    if (utcToParisInput(iso) !== expected) throw new Error('Cette heure locale n’existe pas en Europe/Paris (changement d’heure).');
+    return iso;
+  }
+
+  async function quarantinePendingAccess(identity, state, reason) {
+    if (!identity) return false;
+    const pendingKey = `pending:${identity.userId}:${identity.organizationId}`;
+    const pending = await readScopedLocalRecord('queue', pendingKey, identity).catch(() => null);
+    if (!pending?.state) return false;
+    await dbPut('backups', `store-access:${identity.userId}:${identity.organizationId}:${Date.now()}`, {
+      record: pending,
+      accessState: state,
+      quarantinedAt: new Date().toISOString(),
+      reason: reason || STORE_ACCESS_ERROR
+    });
+    await dbDelete('queue', pendingKey);
+    return true;
+  }
+
+  function renderStoreAccessGate(state) {
+    const node = document.getElementById('pp-auth-gate');
+    if (!node) return;
+    const status = state?.access_status || 'expired';
+    const dateCopy = status === 'scheduled'
+      ? `L’accès commencera le ${formatParisDate(state?.access_starts_at)}.`
+      : state?.access_expires_at
+        ? `L’accès a pris fin le ${formatParisDate(state.access_expires_at)}.`
+        : 'L’accès a été suspendu par un administrateur.';
+    const reason = state?.access_suspension_reason
+      ? `<p class="pp-auth-note err">Motif : ${escapeHtml(state.access_suspension_reason)}</p>` : '';
+    const adminAction = state?.can_administer_access
+      ? '<button class="primary" type="button" data-pp-action="manage-store-access">Prolonger ou réactiver</button>' : '';
+    node.hidden = false;
+    node.innerHTML = `<div class="pp-auth-card pp-access-card"><div class="pp-auth-brand">Planni<b>Pro</b></div><span class="pp-access-state">${escapeHtml(accessStatusLabel(status))}</span><h2>${escapeHtml(state?.establishment_name || 'Établissement')}</h2><p class="pp-auth-kicker">${escapeHtml(dateCopy)} Les données sont conservées, mais aucune donnée métier ni mutation hors ligne n’est accessible ou synchronisée.</p>${reason}<p class="pp-auth-note">Code : ${STORE_ACCESS_ERROR}<br>Contactez un Administrateur de l’organisation.</p><div class="pp-access-actions">${adminAction}<button class="secondary" type="button" data-pp-action="logout">Se déconnecter</button></div></div>`;
+  }
+
+  async function enterStoreAccessBlocked(state, identity = currentIdentity(), reason = STORE_ACCESS_ERROR) {
+    const current = identity || currentIdentity();
+    if (current) await quarantinePendingAccess(current, state, reason).catch((error) => console.warn('Quarantaine accès magasin', error));
+    App.storeAccessBlocked = state;
+    App.remoteReady = false;
+    clearTimeout(App.syncTimer);
+    App.syncTimer = null;
+    const channel = App.realtimeChannel;
+    App.realtimeChannel = null;
+    resetMemoryForIsolation();
+    if (channel) void App.client?.removeChannel?.(channel).catch(() => {});
+    void window.PlanniProVault?.shutdown?.().catch(() => {});
+    void window.PlanniProPublications?.shutdown?.().catch(() => {});
+    App.status(accessStatusLabel(state?.access_status), 'error');
+    renderStoreAccessGate(state);
+    scheduleStoreAccessCheck(state);
+  }
+
+  function updateContextAccessState(state) {
+    if (!state || !App.context) return;
+    Object.assign(App.context, {
+      access_status: state.access_status,
+      access_starts_at: state.access_starts_at,
+      access_expires_at: state.access_expires_at,
+      access_suspended_at: state.access_suspended_at,
+      access_suspension_reason: state.access_suspension_reason,
+      access_version: state.access_version,
+      access_server_now: state.server_now,
+      can_administer_access: state.can_administer_access
+    });
+    const assignment = (App.context.establishment_access || []).find((item) => String(item.establishment_id) === String(state.establishment_id));
+    if (assignment) Object.assign(assignment, state);
+    const serverNow = Date.parse(state.server_now || '');
+    if (Number.isFinite(serverNow)) {
+      App.accessServerNowMs = serverNow;
+      App.accessServerMonotonic = performance.now();
+    }
+  }
+
+  function estimatedServerNow() {
+    if (!Number.isFinite(App.accessServerNowMs) || !Number.isFinite(App.accessServerMonotonic)) return NaN;
+    return App.accessServerNowMs + Math.max(0, performance.now() - App.accessServerMonotonic);
+  }
+
+  async function fetchStoreAccessState(identity = currentIdentity()) {
+    assertIdentity(identity);
+    const { data, error } = await App.client.rpc('get_establishment_access_state', {
+      p_establishment_id: identity.context.primary_establishment_id
+    });
+    if (error) throw error;
+    assertIdentity(identity);
+    updateContextAccessState(data);
+    return data;
+  }
+
+  async function enforceCurrentStoreAccess(identity = currentIdentity(), options = {}) {
+    if (!identity) return false;
+    const state = options.state || await fetchStoreAccessState(identity);
+    const pendingKey = `pending:${identity.userId}:${identity.organizationId}`;
+    const pending = await readScopedLocalRecord('queue', pendingKey, identity).catch(() => null);
+    const versionChanged = pending?.accessVersion != null && state?.access_version != null
+      && Number(pending.accessVersion) !== Number(state.access_version);
+    if (versionChanged) await quarantinePendingAccess(identity, state, 'store-access-version-changed');
+    if (!storeAccessIsOpen(state)) {
+      await enterStoreAccessBlocked(state, identity);
+      throw new StoreAccessError(state);
+    }
+    App.storeAccessBlocked = null;
+    scheduleStoreAccessCheck(state);
+    return !versionChanged;
+  }
+
+  async function revalidateCurrentStoreAccess() {
+    if (!App.session || !App.context) return false;
+    const identity = currentIdentity();
+    if (!identity) return false;
+    if (!navigator.onLine) {
+      const state = accessStateFromContext();
+      const serverNow = estimatedServerNow();
+      const expiresAt = Date.parse(state?.access_expires_at || '');
+      if (Number.isFinite(serverNow) && Number.isFinite(expiresAt) && expiresAt <= serverNow) {
+        state.access_status = 'expired';
+        await enterStoreAccessBlocked(state, identity);
+      } else scheduleStoreAccessCheck(state);
+      return false;
+    }
+    try {
+      const state = await fetchStoreAccessState(identity);
+      if (!storeAccessIsOpen(state)) {
+        await enterStoreAccessBlocked(state, identity);
+        return false;
+      }
+      const wasBlocked = Boolean(App.storeAccessBlocked);
+      App.storeAccessBlocked = null;
+      scheduleStoreAccessCheck(state);
+      if (wasBlocked) {
+        await refreshContext();
+        resetMemoryForIsolation();
+        await restoreOrPull();
+        subscribeRealtime();
+        App.remoteReady = true;
+        hideGate();
+        renderAccount();
+        applyPermissionsToUi();
+        window.dispatchEvent(new CustomEvent('plannipro:cloud-ready'));
+      }
+      return true;
+    } catch (error) {
+      if (error?.name !== 'StoreAccessError') console.warn('Revalidation accès magasin', error);
+      scheduleStoreAccessCheck(accessStateFromContext());
+      return false;
+    }
+  }
+
+  function scheduleStoreAccessCheck(state = accessStateFromContext()) {
+    clearTimeout(App.storeAccessTimer);
+    if (!App.session || !state) return;
+    let delay = 60000;
+    const serverNow = estimatedServerNow();
+    const expiresAt = Date.parse(state.access_expires_at || '');
+    if (storeAccessIsOpen(state) && Number.isFinite(serverNow) && Number.isFinite(expiresAt)) {
+      delay = Math.max(50, Math.min(60000, expiresAt - serverNow + 50));
+    }
+    App.storeAccessTimer = setTimeout(() => { void revalidateCurrentStoreAccess(); }, delay);
+  }
+
+  function addParisDays(localValue, days) {
+    const match = String(localValue || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+    if (!match) throw new Error('Date et heure de début invalides.');
+    const calendar = new Date(Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5]));
+    calendar.setUTCDate(calendar.getUTCDate() + Number(days));
+    return `${calendar.getUTCFullYear()}-${String(calendar.getUTCMonth() + 1).padStart(2, '0')}-${String(calendar.getUTCDate()).padStart(2, '0')}T${String(calendar.getUTCHours()).padStart(2, '0')}:${String(calendar.getUTCMinutes()).padStart(2, '0')}`;
+  }
+
+  async function openStoreAccessDialog(state = App.storeAccessBlocked || accessStateFromContext()) {
+    const establishmentId = state?.establishment_id;
+    if (!establishmentId || !state?.can_administer_access) {
+      safeToast('Cette action est réservée à un Administrateur de cet établissement.', 'err');
+      return;
+    }
+    const serverBase = state.server_now || new Date().toISOString();
+    const startsValue = utcToParisInput(
+      state.access_status === 'scheduled' ? state.access_starts_at : serverBase
+    );
+    const existingExpiry = state.access_expires_at && Date.parse(state.access_expires_at) > Date.parse(serverBase)
+      ? utcToParisInput(state.access_expires_at) : addParisDays(startsValue, 30);
+    const unlimited = !state.access_expires_at && !state.access_suspended_at;
+    const dialog = openDialog(`<h2>Accès de ${escapeHtml(state.establishment_name || 'l’établissement')}</h2><p>Les heures sont affichées en Europe/Paris et enregistrées en UTC. Toute modification est journalisée côté serveur.</p><form id="pp-store-access-form"><div class="pp-dialog-grid"><label style="grid-column:1/-1"><span><input type="checkbox" name="unlimited" ${unlimited ? 'checked' : ''}> Accès illimité</span></label><label>Début<input type="datetime-local" name="starts_at" value="${escapeHtml(startsValue)}" required></label><label>Expiration<input type="datetime-local" name="expires_at" value="${escapeHtml(existingExpiry)}" ${unlimited ? 'disabled' : ''} required></label><label>Raccourci<select name="duration"><option value="">Durée personnalisée</option><option value="7">7 jours</option><option value="30">30 jours</option><option value="90">90 jours</option></select></label><label style="grid-column:1/-1"><span><input type="checkbox" name="suspended" ${state.access_suspended_at ? 'checked' : ''}> Suspendre immédiatement</span></label><label style="grid-column:1/-1">Motif de suspension<input name="reason" maxlength="500" value="${escapeHtml(state.access_suspension_reason || '')}" ${state.access_suspended_at ? 'required' : ''}></label></div><div class="pp-dialog-actions"><button class="btn btn-outline" type="button" data-pp-action="close-dialog">Annuler</button><button class="btn btn-primary" type="submit">Enregistrer</button></div></form>`);
+    const form = dialog.querySelector('#pp-store-access-form');
+    const unlimitedInput = form.elements.unlimited;
+    const expiryInput = form.elements.expires_at;
+    const suspendedInput = form.elements.suspended;
+    const reasonInput = form.elements.reason;
+    unlimitedInput.addEventListener('change', () => { expiryInput.disabled = unlimitedInput.checked; });
+    suspendedInput.addEventListener('change', () => { reasonInput.required = suspendedInput.checked; });
+    form.elements.duration.addEventListener('change', () => {
+      if (!form.elements.duration.value) return;
+      unlimitedInput.checked = false;
+      expiryInput.disabled = false;
+      expiryInput.value = addParisDays(form.elements.starts_at.value, Number(form.elements.duration.value));
+    });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const submit = form.querySelector('[type="submit"]');
+      submit.disabled = true;
+      try {
+        const startsAt = parisInputToUtc(form.elements.starts_at.value);
+        const expiresAt = unlimitedInput.checked ? null : parisInputToUtc(expiryInput.value);
+        if (expiresAt && Date.parse(expiresAt) <= Date.parse(startsAt)) throw new Error('L’expiration doit être postérieure au début.');
+        const { data, error } = await App.client.rpc('set_establishment_access', {
+          p_establishment_id: establishmentId,
+          p_access_starts_at: startsAt,
+          p_access_expires_at: expiresAt,
+          p_suspended: suspendedInput.checked,
+          p_reason: suspendedInput.checked ? reasonInput.value.trim() : null
+        });
+        if (error) throw error;
+        dialog.remove();
+        updateContextAccessState(data);
+        safeToast('Accès de l’établissement mis à jour.', 'ok');
+        await revalidateCurrentStoreAccess();
+      } catch (error) {
+        safeToast(error.message || 'Modification de l’accès impossible.', 'err');
+      } finally { if (document.body.contains(submit)) submit.disabled = false; }
+    });
+  }
+
+  function storeAccessInfo(site) {
+    const cloudId = String(site?.cloudEstablishmentId || '');
+    const assigned = (App.context?.establishment_access || []).find((item) => String(item?.establishment_id || '') === cloudId);
+    const status = assigned?.access_status || site?.accessStatus || 'active';
+    return {
+      establishment_id: assigned?.establishment_id || site?.cloudEstablishmentId || null,
+      establishment_name: assigned?.establishment_name || site?.name || 'Établissement',
+      access_status: status,
+      access_starts_at: assigned?.access_starts_at || site?.accessStartsAt || null,
+      access_expires_at: assigned?.access_expires_at || site?.accessExpiresAt || null,
+      access_suspended_at: assigned?.access_suspended_at || site?.accessSuspendedAt || null,
+      access_suspension_reason: assigned?.access_suspension_reason || site?.accessSuspensionReason || null,
+      access_version: assigned?.access_version ?? site?.accessVersion ?? null,
+      alert_days: assigned?.alert_days ?? null,
+      server_now: App.context?.access_server_now || null,
+      can_administer_access: Boolean(assigned?.can_administer_access)
+    };
+  }
+
+  App.storeAccessInfo = storeAccessInfo;
+  App.accessStatusLabel = accessStatusLabel;
+  App.formatParisDate = formatParisDate;
+  App.utcToParisInput = utcToParisInput;
+  App.parisInputToUtc = parisInputToUtc;
+  App.addParisDays = addParisDays;
+  App.openStoreAccessDialog = openStoreAccessDialog;
 
   function authForm(mode, message, error) {
     const node = document.getElementById('pp-auth-gate');
@@ -524,6 +852,7 @@
     if (action === 'sync-now') void App.syncNow?.('manual');
     if (action === 'open-users') goAllowedView('users');
     if (action === 'self-service') void openSelfServiceDialog();
+    if (action === 'manage-store-access') void openStoreAccessDialog();
     if (action === 'continue-empty-workspace') { hideGate(); renderAccount(); applyPermissionsToUi(); }
     if (action === 'close-dialog') target.closest('.pp-dialog-backdrop')?.remove();
   }
@@ -739,6 +1068,14 @@
         authForm('login', 'Ce compte n’est rattaché à aucune entreprise. Utilisez une invitation valide envoyée par votre administrateur.', true);
         return;
       }
+      const initialAccess = accessStateFromContext(context);
+      updateContextAccessState(initialAccess);
+      if (!storeAccessIsOpen(initialAccess)) {
+        await enterStoreAccessBlocked(initialAccess, currentIdentity());
+        renderAccount();
+        return;
+      }
+      scheduleStoreAccessCheck(initialAccess);
       await App.client.rpc('touch_member_session');
       const restored = await App.restoreOrPull?.();
       if (restored?.needsImport) return;
@@ -835,6 +1172,9 @@
     App.context = null;
     App.contexts = EMPTY_ARRAY;
     App.platformAdmin = false;
+    App.storeAccessBlocked = null;
+    App.accessServerNowMs = null;
+    App.accessServerMonotonic = null;
     App.cacheKey = null;
     App.syncing = false;
     App.applyingRemote = false;
@@ -894,6 +1234,13 @@
       App.context = next;
       App.cacheKey = `state:${App.user.id}:${next.organization_id}`;
       await dbPut('kv', `active-org:${App.user.id}`, organizationId);
+      const nextAccess = accessStateFromContext(next);
+      updateContextAccessState(nextAccess);
+      if (!storeAccessIsOpen(nextAccess)) {
+        await enterStoreAccessBlocked(nextAccess, currentIdentity());
+        renderAccount();
+        return true;
+      }
       await App.restoreOrPull?.();
       subscribeRealtime();
       App.remoteReady = true;
@@ -1016,8 +1363,15 @@
     App.client.auth.onAuthStateChange((eventName, session) => setTimeout(() => { void activateSession(session, eventName); }, 0));
     const { data } = await App.client.auth.getSession();
     await activateSession(data.session, 'INITIAL_SESSION');
-    window.addEventListener('online', () => { App.online = true; void App.syncNow?.('online'); });
-    window.addEventListener('offline', () => { App.online = false; App.status('Hors ligne · modifications en attente', 'pending'); });
+    window.addEventListener('online', () => {
+      App.online = true;
+      if (App.storeAccessBlocked) void revalidateCurrentStoreAccess();
+      else void App.syncNow?.('online');
+    });
+    window.addEventListener('offline', () => {
+      App.online = false;
+      App.status(App.storeAccessBlocked ? accessStatusLabel(App.storeAccessBlocked.access_status) : 'Hors ligne · modifications en attente', App.storeAccessBlocked ? 'error' : 'pending');
+    });
     App.initialized = true;
   }
 
@@ -1267,7 +1621,22 @@
     const sites = remote.sites.map((site) => {
       const localId = site.legacy_id || `site-${site.id}`;
       siteByDbId.set(site.id, localId);
-      return { id: localId, cloudEstablishmentId: site.id, name: site.name, address: site.address || site.data?.address || '', icon: site.data?.icon || '🏪', ...site.data };
+      const assigned = (identity.context?.establishment_access || []).find((item) => String(item?.establishment_id || '') === String(site.id));
+      return {
+        id: localId,
+        cloudEstablishmentId: site.id,
+        name: site.name,
+        address: site.address || site.data?.address || '',
+        icon: site.data?.icon || '🏪',
+        ...site.data,
+        accessStartsAt: site.access_starts_at,
+        accessExpiresAt: site.access_expires_at,
+        accessSuspendedAt: site.access_suspended_at,
+        accessSuspensionReason: site.access_suspension_reason,
+        accessVersion: site.access_version,
+        accessStatus: assigned?.access_status || 'active',
+        accessDirty: false
+      };
     });
     const privateByEmployee = new Map(remote.privateData.map((item) => [item.employee_id, item.data || {}]));
     const selfServiceByEmployee = new Map((remote.selfService || []).map((item) => [item.employee_id, item]));
@@ -1418,13 +1787,24 @@
     assertIdentity(identity);
     const organizationId = identity.organizationId;
     const sites = Array.isArray(snapshot.sites) ? snapshot.sites : [];
-    const siteRows = sites.map((site) => ({
-      organization_id: organizationId,
-      legacy_id: String(site.id),
-      name: site.name || 'Établissement',
-      address: site.address || null,
-      data: { ...site, id: undefined, name: undefined, address: undefined }
-    }));
+    const siteRows = sites.map((site) => {
+      const {
+        id, name, address, cloudEstablishmentId,
+        accessStartsAt, accessExpiresAt, accessSuspendedAt,
+        accessSuspensionReason, accessVersion, accessStatus, accessDirty, accessUnlimited,
+        ...metadata
+      } = site;
+      void cloudEstablishmentId; void accessStartsAt; void accessExpiresAt;
+      void accessSuspendedAt; void accessSuspensionReason; void accessVersion;
+      void accessStatus; void accessDirty; void accessUnlimited;
+      return {
+        organization_id: organizationId,
+        legacy_id: String(id),
+        name: name || 'Établissement',
+        address: address || null,
+        data: metadata
+      };
+    });
     // Run the conflict preflight before the first write. This guarantees that a
     // rejected business snapshot cannot partially update sites or employees.
     const [visibleSites, visibleEmployees, currentRecords] = await Promise.all([
@@ -1536,12 +1916,29 @@
       .select('record_type,legacy_id,revision')
       .eq('organization_id', organizationId).is('deleted_at', null);
     tableError(revisions.error, 'Révisions des données métier');
+    for (const site of sites.filter((item) => item?.accessDirty)) {
+      const establishmentId = siteMap.get(String(site.id)) || site.cloudEstablishmentId;
+      if (!establishmentId) throw new Error('Établissement non synchronisé : impossible de régler son accès.');
+      const startsAt = site.accessStartsAt || new Date().toISOString();
+      const expiresAt = site.accessUnlimited === false ? (site.accessExpiresAt || null) : null;
+      const { error } = await App.client.rpc('set_establishment_access', {
+        p_establishment_id: establishmentId,
+        p_access_starts_at: startsAt,
+        p_access_expires_at: expiresAt,
+        p_suspended: false,
+        p_reason: null
+      });
+      tableError(error, `Accès de ${site.name || 'l’établissement'}`);
+      assertIdentity(identity);
+    }
     return revisionObject(revisions.data || []);
   }
 
   async function restoreOrPull() {
     const identity = currentIdentity();
     if (!identity) return;
+    if (App.storeAccessBlocked) throw new StoreAccessError(App.storeAccessBlocked);
+    if (navigator.onLine && typeof enforceCurrentStoreAccess === 'function') await enforceCurrentStoreAccess(identity);
     await archiveAndClearLegacyStorage(identity);
     assertIdentity(identity);
     resetMemoryForIsolation();
@@ -1572,6 +1969,9 @@
     }
     const remote = await fetchRemoteState(identity);
     assertIdentity(identity);
+    // Une expiration peut tomber entre le précontrôle et les SELECT. RLS
+    // renvoie alors des listes vides : revalider avant d'appliquer ou cacher.
+    if (typeof enforceCurrentStoreAccess === 'function') await enforceCurrentStoreAccess(identity);
     // The cloud workspace, including an intentionally empty one, is always
     // authoritative when no scoped offline mutation is pending.
     if (shouldApplyRemoteState(remote, cached, pending)) applyRemoteState(remote, identity);
@@ -1584,7 +1984,7 @@
   }
 
   function captureLocalChange(reason) {
-    if (!App.session || !App.context || App.applyingRemote) return;
+    if (!App.session || !App.context || App.applyingRemote || App.storeAccessBlocked) return;
     const identity = currentIdentity();
     if (!identity) return;
     App.localChangeRevision += 1;
@@ -1623,6 +2023,11 @@
     try {
       await refreshContext();
       assertIdentity(identity);
+      if (typeof enforceCurrentStoreAccess === 'function') {
+        const preflightState = accessStateFromContext();
+        updateContextAccessState(preflightState);
+        await enforceCurrentStoreAccess(identity, { state: preflightState });
+      }
       let passes = 0;
       while (passes < 8) {
         const pending = await readScopedLocalRecord('queue', pendingKey, identity);
@@ -1648,7 +2053,9 @@
         App.status('Modifications à synchroniser', 'pending');
         return false;
       }
+      if (typeof enforceCurrentStoreAccess === 'function') await enforceCurrentStoreAccess(identity);
       const remote = await fetchRemoteState(identity);
+      if (typeof enforceCurrentStoreAccess === 'function') await enforceCurrentStoreAccess(identity);
       remaining = await readScopedLocalRecord('queue', pendingKey, identity);
       if (remaining?.state || App.localChangeRevision !== revisionAtStart) {
         scheduleQueuedSync();
@@ -1667,6 +2074,10 @@
       App.status('Synchronisé', 'ok');
       return true;
     } catch (error) {
+      if (error?.name === 'StoreAccessError' || error?.code === 'STORE_ACCESS_EXPIRED' || String(error?.message || '').includes('STORE_ACCESS_EXPIRED')) {
+        if (!App.storeAccessBlocked) await enterStoreAccessBlocked(error.state || accessStateFromContext(), identity);
+        return false;
+      }
       if (!identityIsCurrent(identity) || error?.name === 'StaleIdentityError') {
         // A permission refresh may replace the active context (for example when
         // access to the current store is revoked). Never leave the old store's
@@ -1704,7 +2115,7 @@
   App.syncNow = syncNow;
 
   function subscribeRealtime() {
-    if (!App.client || !App.context) return;
+    if (!App.client || !App.context || App.storeAccessBlocked) return;
     if (App.realtimeChannel) App.client.removeChannel(App.realtimeChannel);
     const organizationId = App.context.organization_id;
     const refresh = () => {
@@ -1726,6 +2137,7 @@
     App.realtimeChannel = App.client.channel(`plannipro:${organizationId}:${App.user.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `organization_id=eq.${organizationId}` }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'business_records', filter: `organization_id=eq.${organizationId}` }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'establishments', filter: `organization_id=eq.${organizationId}` }, () => { void revalidateCurrentStoreAccess(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'organization_members', filter: `organization_id=eq.${organizationId}` }, refreshAccess)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'roles', filter: `organization_id=eq.${organizationId}` }, refreshPermissions)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'role_permissions' }, refreshPermissions)
@@ -1744,6 +2156,12 @@
       const previousOrganization = App.context?.organization_id;
       await refreshContext();
       if (!App.context || App.context.organization_id !== previousOrganization) return void logout();
+      const state = accessStateFromContext();
+      updateContextAccessState(state);
+      if (!storeAccessIsOpen(state)) {
+        await enterStoreAccessBlocked(state, currentIdentity());
+        return;
+      }
       renderAccount();
       applyPermissionsToUi();
       if (typeof curView !== 'undefined' && curView === 'users') await loadUsersView();
