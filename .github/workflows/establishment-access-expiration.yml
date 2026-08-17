@@ -2,6 +2,11 @@ name: Recette expiration accès magasin
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - agent/expiration-acces-magasin
+    paths:
+      - '.github/workflows/establishment-access-expiration.yml'
 
 permissions:
   contents: read
